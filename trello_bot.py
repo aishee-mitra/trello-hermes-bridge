@@ -285,6 +285,10 @@ class Bridge:
 Card context:
 {card_json}
 
+First, post a brief pickup comment on the card, e.g.:
+
+  python3 {command_hint} comment {card.get("id","CARD_ID")} "Picked up by @{self.cfg.agent_username}. I’ll work this and report back here."
+
 Use the local Trello bridge CLI for write-back; it reads credentials from its local
 config and does not require secrets in this prompt:
   python3 {command_hint} comment CARD_ID TEXT
