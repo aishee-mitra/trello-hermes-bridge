@@ -97,6 +97,23 @@ Trello card + lists
 - `commentCard` containing `@<agent-username>` → **mentioned**
 - Everything else → ignored
 
+### Per-task model override
+
+Add a label to any Trello card with the pattern `model:provider/model-name` to override the default model for that task:
+
+- `model:openrouter/openai/gpt-4` — uses OpenRouter with GPT-4
+- `model:openai/gpt-4` — uses OpenAI provider with GPT-4  
+- `model:gpt-4` — uses the default provider with GPT-4
+
+The label format follows Hermes CLI conventions: `hermes chat --provider <provider> --model <model>`.
+
+**Example:** Add label `model:openrouter/anthropic/claude-3.5-sonnet` to a card, then assign it to the agent. The worker will spawn with:
+```bash
+hermes chat -q "..." --provider openrouter --model anthropic/claude-3.5-sonnet
+```
+
+If no model label is present, the worker uses the default model from `HERMES_MODEL` in `config.env`.
+
 ### Lifecycle
 
 | State | Action |
