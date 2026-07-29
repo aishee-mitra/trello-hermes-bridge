@@ -38,7 +38,7 @@ chmod 600 config.env
 $EDITOR config.env
 ```
 
-Then install the systemd user service:
+Fill `config.env`, then install the systemd user service:
 
 ```bash
 mkdir -p ~/.config/systemd/user
@@ -48,7 +48,17 @@ systemctl --user enable --now trello-bot
 systemctl --user status trello-bot
 ```
 
-Expose the bridge with Cloudflare tunnel on `BIND_HOST:BIND_PORT`, register a Trello board webhook to `https://<host>/webhook`, and you’re live.
+Expose the bridge with a tunnel on `BIND_HOST:BIND_PORT`, register a Trello board webhook to `https://<host>/webhook`, and you’re live.
+
+## 🛠️ Interactive Install
+
+If you want an agent-guided install workflow, use `SKILL.md` in this repo. It covers:
+
+- cloning and config setup
+- systemd user service install
+- bridge listening verification
+- tunnel/webhook registration
+- validation via logs and a test card
 
 ---
 
