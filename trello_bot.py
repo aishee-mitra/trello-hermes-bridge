@@ -311,8 +311,23 @@ class Bridge:
         return "spawned"
 
     def spawn_worker(self, card_id_value: str, signal: str) -> subprocess.Popen[Any]:
+        # Fetch card details to check for model override in labels
+        card = self.client.get_card(card_id_value, 5)
+        
+        # Check for model override in labels: look for label with pattern "model:provider/model-name"
+        model_override = self.cfg.hermes_model  # default
+        for label in (card.get("labels") or []):
+            label_name = label.get("name", "")
+            if label_name.lower().startswith("model:"):
+                model_value = label_name[6:].strip()  # extract after "model:"
+                model_override = model_value
+                self.logger.info("model override from label: %s", model_override)
+                break
+        
         command_hint = str(Path(__file__).resolve())
         prompt = f"""Work the Trello card below (card id: {card_id_value}). This run was triggered by {signal}.
+
+Card description: {card.get('desc', '')}
 
 First, fetch the card details using the CLI:
   python3 {command_hint} get-card {card_id_value}
@@ -348,8 +363,9 @@ Do NOT leave the card in Doing after reporting a blocker. Execute all three Stuc
 Keep comments concise and do not expose API keys, tokens, or internal IDs in manager-facing text.
 """
         cmd = [self.cfg.hermes_bin, "chat", "-q", prompt, "--cli", "-Q", "--accept-hooks", "--yolo"]
-        if self.cfg.hermes_model:
-            cmd.extend(["--model", self.cfg.hermes_model])
+        if model_override:
+            cmd.extend(["--model", model_override])
+            self.logger.info("spawning worker with model: %s", model_override)
         self.logger.info("spawning Hermes worker for card %s", card_id_value[:8])
         proc = subprocess.Popen(
             cmd,
