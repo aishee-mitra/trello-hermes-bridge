@@ -282,52 +282,39 @@ class Bridge:
                 action_type(action), card_id(action), board_id(action), comment_text(action)[:120],
             )
             return "ignored"
+        card_id_value = card_id(action)
+        if action_type(action) == "commentCard" and is_agent_authored_comment(action, self.cfg):
+            self.logger.info("ignored agent-authored comment for card %s", card_id_value[:8])
+            return "ignored"
         key = dedup_key(action, signal)
         if not self.dedup.accept(key):
             self.logger.info("duplicate trigger ignored: %s", key)
             return "duplicate"
-        card_id_value = card_id(action)
         if not card_id_value:
             self.logger.warning("trigger had no card id")
             return "invalid"
-        card = self.client.get_card(card_id_value, self.cfg.max_card_comments)
         if self._worker_in_flight(card_id_value):
             self.logger.info("worker already running for card %s", card_id_value[:8])
             return "duplicate"
-        if action_type(action) == "commentCard" and is_agent_authored_comment(action, self.cfg):
-            self.logger.info("ignored agent-authored comment for card %s", card_id_value[:8])
-            return "ignored"
-        if not self._already_picked_up(card):
-            self.client.add_comment(
-                card_id_value,
-                f"Picked up by @{self.cfg.agent_username}. I'll work this and report back here.",
-            )
-        self.client.move_card(card_id_value, self.cfg.list_doing)
         if signal == "mentioned" and self._cancel_keywords(action):
-            self.client.move_card(card_id_value, self.cfg.list_dropped)
-            self.client.add_comment(
-                card_id_value,
-                f"Cancelled on request by @{self.cfg.manager_username}.",
-            )
-            return "cancelled"
-        self.spawn_worker(card, signal)
+            self.logger.info("cancellation detected, spawning worker to handle")
+        self.spawn_worker(card_id_value, signal)
         return "spawned"
 
-    def spawn_worker(self, card: dict[str, Any], signal: str) -> subprocess.Popen[Any]:
-        card_json = json.dumps(card, ensure_ascii=False, indent=2)
+    def spawn_worker(self, card_id_value: str, signal: str) -> subprocess.Popen[Any]:
         command_hint = str(Path(__file__).resolve())
-        prompt = f"""Work the Trello card below. This run was triggered by {signal}.
+        prompt = f"""Work the Trello card below (card id: {card_id_value}). This run was triggered by {signal}.
 
-Card context:
-{card_json}
+First, fetch the card details using the CLI:
+  python3 {command_hint} get-card {card_id_value}
 
-Required first actions:
+Required first actions (execute these after fetching card details):
 1. Post exactly one pickup comment on the card:
-   python3 {command_hint} comment {card.get("id","CARD_ID")} "Picked up by @{self.cfg.agent_username}. I’ll work this and report back here."
+   python3 {command_hint} comment {card_id_value} "Picked up by @{self.cfg.agent_username}. I'll work this and report back here."
 2. Move the card to the configured Doing list:
-   python3 {command_hint} move {card.get("id","CARD_ID")} {self.cfg.list_doing}
+   python3 {command_hint} move {card_id_value} {self.cfg.list_doing}
 
-After pickup is complete, continue with the actual work. Use the local Trello bridge CLI for all write-back; it reads credentials from local config.env and does not require secrets in this prompt:
+After completing the required first actions, continue with the actual work. Use the local Trello bridge CLI for all write-back; it reads credentials from local config.env and does not require secrets in this prompt:
   python3 {command_hint} comment CARD_ID TEXT
   python3 {command_hint} move CARD_ID LIST_ID
 
@@ -471,13 +458,22 @@ def main() -> int:
     if args.command == "serve":
         run_server(cfg)
         return 0
-    if not args.card_id or not args.value:
-        parser.error(f"{args.command} requires CARD_ID and VALUE")
+    if not args.card_id:
+        parser.error(f"{args.command} requires CARD_ID")
     if args.command == "comment":
+        if not args.value:
+            parser.error("comment requires VALUE")
         client.add_comment(args.card_id, args.value)
-    else:
+    elif args.command == "move":
+        if not args.value:
+            parser.error("move requires LIST_ID")
         client.move_card(args.card_id, args.value)
-    return 0
+    elif args.command == "get-card":
+        max_comments = int(args.value) if args.value else 20
+        card = client.get_card(args.card_id, max_comments)
+        print(json.dumps(card, indent=2))
+    else:
+        parser.error(f"unknown command: {args.command}")
 
 
 if __name__ == "__main__":
