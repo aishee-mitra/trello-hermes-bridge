@@ -22,6 +22,7 @@ Turn explicit Trello work allocation into a **detached Hermes Agent run** — no
 - 📋 **Lifecycle management** — `Todo` → `Doing` → `Stuck` → `Done` → `Dropped`
 - 🔁 **Deduplication** — same card/trigger ignored within a configurable window
 - 🌐 **Cloudflare-tunnel friendly** — binds to configurable `BIND_HOST:<port>`
+- 🏷️ **Per-task model override** — use labels like `model:provider/model-name` to override the default model for a specific card
 - 📦 **Zero external dependencies** — stdlib only
 - 🚀 **systemd user service** — auto-start + linger
 

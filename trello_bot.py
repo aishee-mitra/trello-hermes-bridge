@@ -315,13 +315,19 @@ class Bridge:
         card = self.client.get_card(card_id_value, 5)
         
         # Check for model override in labels: look for label with pattern "model:provider/model-name"
-        model_override = self.cfg.hermes_model  # default
+        provider_override = None
+        model_override = None
         for label in (card.get("labels") or []):
             label_name = label.get("name", "")
             if label_name.lower().startswith("model:"):
                 model_value = label_name[6:].strip()  # extract after "model:"
-                model_override = model_value
-                self.logger.info("model override from label: %s", model_override)
+                # Parse provider/model format
+                if "/" in model_value:
+                    provider_override = model_value.split("/")[0]
+                    model_override = "/".join(model_value.split("/")[1:])
+                else:
+                    model_override = model_value  # use default provider
+                self.logger.info("model override from label: provider=%s model=%s", provider_override, model_override)
                 break
         
         command_hint = str(Path(__file__).resolve())
@@ -363,9 +369,11 @@ Do NOT leave the card in Doing after reporting a blocker. Execute all three Stuc
 Keep comments concise and do not expose API keys, tokens, or internal IDs in manager-facing text.
 """
         cmd = [self.cfg.hermes_bin, "chat", "-q", prompt, "--cli", "-Q", "--accept-hooks", "--yolo"]
+        if provider_override:
+            cmd.extend(["--provider", provider_override])
         if model_override:
             cmd.extend(["--model", model_override])
-            self.logger.info("spawning worker with model: %s", model_override)
+            self.logger.info("spawning worker with provider=%s model=%s", provider_override, model_override)
         self.logger.info("spawning Hermes worker for card %s", card_id_value[:8])
         proc = subprocess.Popen(
             cmd,
