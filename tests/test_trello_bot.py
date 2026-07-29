@@ -113,6 +113,31 @@ class TrelloBotTests(unittest.TestCase):
             trello_bot.dedup_key(second, "mentioned"), "card:mentioned:comment-2"
         )
 
+    def test_already_picked_up_skips_duplicate_pickup_comment(self):
+        cfg = config()
+        bridge = trello_bot.Bridge(cfg)
+        card = {
+            "id": "card",
+            "comments": [
+                {"data": {"text": "Picked up by @aishee. I'll work this and report back here."}},
+            ],
+        }
+        self.assertTrue(bridge._already_picked_up(card))
+
+        card = {
+            "id": "card",
+            "comments": [
+                {"data": {"text": "Picked up by @aishee. I'll work this and report back here."}},
+                {"data": {"text": "Some other comment"}},
+            ],
+        }
+        self.assertTrue(bridge._already_picked_up(card))
+
+        card = {"id": "card", "comments": [{"data": {"text": "Some other comment"}}]}
+        self.assertFalse(bridge._already_picked_up(card))
+
+        self.assertFalse(bridge._already_picked_up({"id": "card"}))
+
 
 if __name__ == "__main__":
     unittest.main()

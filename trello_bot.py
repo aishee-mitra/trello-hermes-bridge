@@ -174,6 +174,14 @@ def dedup_key(action: dict[str, Any], signal: str) -> str:
     return f"{card_id(action)}:{signal}"
 
 
+def is_agent_authored_comment(action: dict[str, Any], cfg: Config) -> bool:
+    member = member_from_action(action)
+    if isinstance(member, dict) and member.get("id") == cfg.agent_member_id:
+        return True
+    author = action.get("memberCreator") or {}
+    return bool(author.get("id") == cfg.agent_member_id)
+
+
 class Deduplicator:
     def __init__(self, window_seconds: int = 300, clock=time.monotonic):
         self.window_seconds = window_seconds
@@ -243,11 +251,20 @@ class Bridge:
         self.cfg = cfg
         self.client = client or TrelloClient(cfg)
         self.dedup = Deduplicator(cfg.dedup_window_seconds)
+        self._active_workers: dict[str, subprocess.Popen[Any]] = {}
         self.logger = logging.getLogger("trello-bot")
 
     def _cancel_keywords(self, action: dict[str, Any]) -> bool:
         text = (comment_text(action) or "").lower()
         return any(token in text for token in ("cancel this", "drop this", "abort", "stop this", "disregard"))
+
+    def _already_picked_up(self, card: dict[str, Any]) -> bool:
+        pickup = f"Picked up by @{self.cfg.agent_username}. I'll work this and report back here."
+        for comment in card.get("comments") or []:
+            text = str(comment.get("data", {}).get("text") or comment.get("text") or "")
+            if text.strip() == pickup:
+                return True
+        return False
 
     def process(self, action: dict[str, Any]) -> str:
         triggered, signal = is_agent_trigger(action, self.cfg)
@@ -266,6 +283,17 @@ class Bridge:
             self.logger.warning("trigger had no card id")
             return "invalid"
         card = self.client.get_card(card_id_value, self.cfg.max_card_comments)
+        if self._worker_in_flight(card_id_value):
+            self.logger.info("worker already running for card %s", card_id_value[:8])
+            return "duplicate"
+        if action_type(action) == "commentCard" and is_agent_authored_comment(action, self.cfg):
+            self.logger.info("ignored agent-authored comment for card %s", card_id_value[:8])
+            return "ignored"
+        if not self._already_picked_up(card):
+            self.client.add_comment(
+                card_id_value,
+                f"Picked up by @{self.cfg.agent_username}. I'll work this and report back here.",
+            )
         self.client.move_card(card_id_value, self.cfg.list_doing)
         if signal == "mentioned" and self._cancel_keywords(action):
             self.client.move_card(card_id_value, self.cfg.list_dropped)
@@ -311,7 +339,7 @@ do not expose API keys, tokens, or internal IDs in manager-facing text.
         if self.cfg.hermes_model:
             cmd.extend(["--model", self.cfg.hermes_model])
         self.logger.info("spawning Hermes worker for card %s", card.get("id", "")[:8])
-        return subprocess.Popen(
+        proc = subprocess.Popen(
             cmd,
             cwd=self.cfg.project_dir or None,
             stdout=subprocess.DEVNULL,
@@ -319,6 +347,28 @@ do not expose API keys, tokens, or internal IDs in manager-facing text.
             start_new_session=True,
             env={**os.environ, "TRELLO_BOT_CONFIG": str(config_path())},
         )
+        self._active_workers[card.get("id", "")] = proc
+        threading.Thread(
+            target=self._wait_for_worker,
+            args=(card.get("id", ""), proc),
+            name=f"trello-worker-wait-{card.get('id','')[:8]}",
+            daemon=True,
+        ).start()
+        return proc
+
+    def _wait_for_worker(self, card_id_value: str, proc: subprocess.Popen[Any]) -> None:
+        try:
+            proc.wait()
+        finally:
+            self._active_workers.pop(card_id_value, None)
+
+    def _worker_in_flight(self, card_id_value: str) -> bool:
+        proc = self._active_workers.get(card_id_value)
+        if proc and proc.poll() is None:
+            return True
+        if proc:
+            self._active_workers.pop(card_id_value, None)
+        return False
 
 
 def config_path() -> Path:
