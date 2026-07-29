@@ -99,15 +99,15 @@ Trello card + lists
 
 ### Per-task model override
 
-Add a label to any Trello card with the pattern `model:provider/model-name` to override the default model for that task:
+Add a label to any Trello card with the pattern `model:<provider>:<full model id>` to override the default model for that task:
 
-- `model:openrouter/openai/gpt-4` — uses OpenRouter with GPT-4
-- `model:openai/gpt-4` — uses OpenAI provider with GPT-4  
-- `model:gpt-4` — uses the default provider with GPT-4
+- `model:openrouter:openai/gpt-4` — uses OpenRouter with model ID `openai/gpt-4`
+- `model:openai:gpt-4` — uses OpenAI provider with model ID `gpt-4`  
+- `model::gpt-4` — uses the default provider with model ID `gpt-4`
 
-The label format follows Hermes CLI conventions: `hermes chat --provider <provider> --model <model>`.
+The label format is simpler than CLI syntax: `model:<provider>:<model>`. Empty provider means “use the configured default provider”.
 
-**Example:** Add label `model:openrouter/anthropic/claude-3.5-sonnet` to a card, then assign it to the agent. The worker will spawn with:
+**Example:** Add label `model:openrouter:anthropic/claude-3.5-sonnet` to a card, then assign it to the agent. The worker will spawn with:
 ```bash
 hermes chat -q "..." --provider openrouter --model anthropic/claude-3.5-sonnet
 ```

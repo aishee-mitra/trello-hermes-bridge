@@ -314,19 +314,19 @@ class Bridge:
         # Fetch card details to check for model override in labels
         card = self.client.get_card(card_id_value, 5)
         
-        # Check for model override in labels: look for label with pattern "model:provider/model-name"
+        # Check for model override in labels: look for label with pattern "model:<provider>:<model>"
         provider_override = None
         model_override = None
         for label in (card.get("labels") or []):
             label_name = label.get("name", "")
             if label_name.lower().startswith("model:"):
                 model_value = label_name[6:].strip()  # extract after "model:"
-                # Parse provider/model format
-                if "/" in model_value:
-                    provider_override = model_value.split("/")[0]
-                    model_override = "/".join(model_value.split("/")[1:])
+                parts = model_value.split(":", 1)
+                if len(parts) == 2 and parts[0].strip():
+                    provider_override = parts[0].strip()
+                    model_override = parts[1].strip()
                 else:
-                    model_override = model_value  # use default provider
+                    model_override = model_value  # treat remainder as default-provider model
                 self.logger.info("model override from label: provider=%s model=%s", provider_override, model_override)
                 break
         
