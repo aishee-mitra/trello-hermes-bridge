@@ -1,0 +1,14 @@
+[Unit]
+Description=Trello to Hermes webhook bridge
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/home/aishee/Programs/trello-bot
+ExecStart=/usr/bin/python3 /home/aishee/Programs/trello-bot/trello_bot.py serve --config /home/aishee/Programs/trello-bot/config.env
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=default.target
