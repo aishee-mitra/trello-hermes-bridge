@@ -138,6 +138,20 @@ def comment_text(action: dict[str, Any]) -> str:
     return str(text)
 
 
+def normalize_webhook_payload(payload: dict[str, Any]) -> dict[str, Any]:
+    """Unwrap Trello's {action, model} webhook envelope."""
+    nested = payload.get("action")
+    if not isinstance(nested, dict):
+        return payload
+    action = dict(nested)
+    data = dict(action.get("data") or {})
+    model = payload.get("model") or {}
+    if model.get("id") and not data.get("board"):
+        data["board"] = {"id": model.get("id"), "name": model.get("name", "")}
+    action["data"] = data
+    return action
+
+
 def is_agent_trigger(action: dict[str, Any], cfg: Config) -> tuple[bool, str]:
     """Return whether an action is an explicit assignment or mention trigger."""
     payload_board_id = board_id(action)
@@ -231,6 +245,10 @@ class Bridge:
     def process(self, action: dict[str, Any]) -> str:
         triggered, signal = is_agent_trigger(action, self.cfg)
         if not triggered:
+            self.logger.info(
+                "ignored webhook type=%s card=%s board=%s text=%r",
+                action_type(action), card_id(action), board_id(action), comment_text(action)[:120],
+            )
             return "ignored"
         key = dedup_key(action, signal)
         if not self.dedup.accept(key):
@@ -326,7 +344,7 @@ class WebhookHandler(http.server.BaseHTTPRequestHandler):
             self.send_error(403, "invalid webhook signature")
             return
         try:
-            action = json.loads(raw_body)
+            action = normalize_webhook_payload(json.loads(raw_body))
         except (ValueError, json.JSONDecodeError):
             self.send_error(400, "invalid JSON")
             return

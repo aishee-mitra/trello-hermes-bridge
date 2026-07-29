@@ -79,6 +79,22 @@ class TrelloBotTests(unittest.TestCase):
         self.assertEqual(trello_bot.member_id_from_action(action), "agent-id")
         self.assertEqual(trello_bot.dedup_key(action, "assigned"), "abc:assigned")
 
+    def test_trello_webhook_envelope_is_unwrapped(self):
+        payload = {
+            "model": {"id": "board", "name": "Aishee and Me"},
+            "action": {
+                "type": "commentCard",
+                "data": {
+                    "card": {"id": "card"},
+                    "text": "@aishee please investigate",
+                },
+            },
+        }
+        action = trello_bot.normalize_webhook_payload(payload)
+        self.assertEqual(action["type"], "commentCard")
+        self.assertEqual(trello_bot.board_id(action), "board")
+        self.assertEqual(trello_bot.is_agent_trigger(action, config()), (True, "mentioned"))
+
 
 if __name__ == "__main__":
     unittest.main()
