@@ -326,7 +326,8 @@ class Bridge:
                     provider_override = parts[0].strip()
                     model_override = parts[1].strip()
                 else:
-                    model_override = model_value  # treat remainder as default-provider model
+                    provider_override = None
+                    model_override = model_value.strip(": ")
                 self.logger.info("model override from label: provider=%s model=%s", provider_override, model_override)
                 break
         

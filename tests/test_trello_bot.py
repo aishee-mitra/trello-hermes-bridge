@@ -150,6 +150,27 @@ class TrelloBotTests(unittest.TestCase):
         self.assertEqual(trello_bot.is_agent_trigger(agent_self_mention, cfg), (False, "other"))
         self.assertTrue(trello_bot.is_agent_authored_comment(agent_self_mention, cfg))
 
+    def test_model_label_parsing_edge_cases(self):
+        cases = [
+            ("model:openrouter:anthropic/claude-3.5-sonnet", "openrouter", "anthropic/claude-3.5-sonnet"),
+            ("model::gpt-4", None, "gpt-4"),
+            ("model:tencent:hy3:free", "tencent", "hy3:free"),
+            ("model:openrouter:tencent/hy3:free", "openrouter", "tencent/hy3:free"),
+            ("model:openai:gpt-4", "openai", "gpt-4"),
+            ("model:gpt-4", None, "gpt-4"),
+        ]
+        for label, expected_provider, expected_model in cases:
+            model_value = label[6:].strip()
+            parts = model_value.split(":", 1)
+            if len(parts) == 2 and parts[0].strip():
+                provider = parts[0].strip()
+                model = parts[1].strip()
+            else:
+                provider = None
+                model = model_value.strip(": ")
+            self.assertEqual(provider, expected_provider, msg=f"label={label}")
+            self.assertEqual(model, expected_model, msg=f"label={label}")
+
 
 if __name__ == "__main__":
     unittest.main()
