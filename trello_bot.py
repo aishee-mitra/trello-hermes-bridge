@@ -245,6 +245,10 @@ class Bridge:
         self.dedup = Deduplicator(cfg.dedup_window_seconds)
         self.logger = logging.getLogger("trello-bot")
 
+    def _cancel_keywords(self, action: dict[str, Any]) -> bool:
+        text = (comment_text(action) or "").lower()
+        return any(token in text for token in ("cancel this", "drop this", "abort", "stop this", "disregard"))
+
     def process(self, action: dict[str, Any]) -> str:
         triggered, signal = is_agent_trigger(action, self.cfg)
         if not triggered:
@@ -263,6 +267,13 @@ class Bridge:
             return "invalid"
         card = self.client.get_card(card_id_value, self.cfg.max_card_comments)
         self.client.move_card(card_id_value, self.cfg.list_doing)
+        if signal == "mentioned" and self._cancel_keywords(action):
+            self.client.move_card(card_id_value, self.cfg.list_dropped)
+            self.client.add_comment(
+                card_id_value,
+                f"Cancelled on request by @{self.cfg.manager_username}.",
+            )
+            return "cancelled"
         self.spawn_worker(card, signal)
         return "spawned"
 
