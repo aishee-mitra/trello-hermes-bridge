@@ -46,7 +46,7 @@ class Config:
     list_stuck: str
     list_done: str
     list_dropped: str
-    bind_host: str = "192.168.0.99"
+    bind_host: str = "0.0.0.0"
     bind_port: int = 8787
     hermes_bin: str = "/home/aishee/.local/bin/hermes"
     hermes_model: str = ""
@@ -88,7 +88,7 @@ class Config:
             list_stuck=required("LIST_ID_STUCK"),
             list_done=required("LIST_ID_DONE"),
             list_dropped=required("LIST_ID_DROPPED"),
-            bind_host=optional("BIND_HOST", "192.168.0.99"),
+            bind_host=optional("BIND_HOST", "0.0.0.0"),
             bind_port=int(optional("BIND_PORT", "8787")),
             hermes_bin=optional("HERMES_BIN", "/home/aishee/.local/bin/hermes"),
             hermes_model=optional("HERMES_MODEL", ""),
