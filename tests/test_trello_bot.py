@@ -138,6 +138,18 @@ class TrelloBotTests(unittest.TestCase):
 
         self.assertFalse(bridge._already_picked_up({"id": "card"}))
 
+    def test_agent_self_mention_does_not_trigger(self):
+        cfg = config()
+        # Agent-authored comment mentioning itself should not trigger
+        agent_self_mention = {
+            "type": "commentCard",
+            "id": "comment-3",
+            "data": {"card": {"id": "card-1"}, "text": "@aishee update: still working"},
+            "memberCreator": {"id": "agent-id", "username": "aishee"}
+        }
+        self.assertEqual(trello_bot.is_agent_trigger(agent_self_mention, cfg), (False, "other"))
+        self.assertTrue(trello_bot.is_agent_authored_comment(agent_self_mention, cfg))
+
 
 if __name__ == "__main__":
     unittest.main()

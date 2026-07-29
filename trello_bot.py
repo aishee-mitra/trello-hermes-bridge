@@ -158,6 +158,10 @@ def normalize_pickup_text(text: str) -> str:
 
 def is_agent_trigger(action: dict[str, Any], cfg: Config) -> tuple[bool, str]:
     """Return whether an action is an explicit assignment or mention trigger."""
+    # Agent-authored comments should never trigger - checked before this function, but double-check
+    if action_type(action) == "commentCard" and is_agent_authored_comment(action, cfg):
+        return False, "other"
+    
     payload_board_id = board_id(action)
     if payload_board_id and payload_board_id != cfg.board_id:
         return False, "other"
@@ -278,6 +282,11 @@ class Bridge:
         return False
 
     def process(self, action: dict[str, Any]) -> str:
+        # First check if this is an agent-authored comment - ignore immediately to prevent loops
+        if action_type(action) == "commentCard" and is_agent_authored_comment(action, self.cfg):
+            self.logger.info("ignored agent-authored comment for card %s", card_id(action)[:8])
+            return "ignored"
+        
         triggered, signal = is_agent_trigger(action, self.cfg)
         if not triggered:
             self.logger.info(
@@ -286,9 +295,6 @@ class Bridge:
             )
             return "ignored"
         card_id_value = card_id(action)
-        if action_type(action) == "commentCard" and is_agent_authored_comment(action, self.cfg):
-            self.logger.info("ignored agent-authored comment for card %s", card_id_value[:8])
-            return "ignored"
         key = dedup_key(action, signal)
         if not self.dedup.accept(key):
             self.logger.info("duplicate trigger ignored: %s", key)
