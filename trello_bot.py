@@ -250,6 +250,9 @@ class TrelloClient:
     def move_card(self, card_id_value: str, list_id: str) -> Any:
         return self.request("PUT", f"/cards/{quote(card_id_value)}", {"idList": list_id})
 
+    def assign_member(self, card_id_value: str, member_id: str) -> Any:
+        return self.request("POST", f"/cards/{quote(card_id_value)}/idMembers", {"value": member_id})
+
 
 class Bridge:
     def __init__(self, cfg: Config, client: TrelloClient | None = None):
@@ -324,12 +327,18 @@ Configured lifecycle list IDs:
   Done: {self.cfg.list_done}
   Dropped: {self.cfg.list_dropped}
 
+Configured member IDs:
+  Manager: {self.cfg.manager_member_id} (@{self.cfg.manager_username})
+
 Mandatory transition rules:
 - If the task is cancelled or out of scope, explain briefly and move it to Dropped.
-- If the task is blocked, post a concise comment with the blocker and mention @{self.cfg.manager_username}, then move it to Stuck.
+- If the task is blocked/stuck, you MUST:
+  1. Post a concise comment explaining the blocker and what you need from @{self.cfg.manager_username}
+  2. Move the card to Stuck ({self.cfg.list_stuck})
+  3. Assign the card to @{self.cfg.manager_username} using: python3 {command_hint} assign CARD_ID {self.cfg.manager_member_id}
 - When the task is complete, move it to Done.
 
-Do NOT leave the card in Doing after reporting a blocker. Execute the move in the same turn as the blocker comment when possible.
+Do NOT leave the card in Doing after reporting a blocker. Execute all three Stuck actions in sequence.
 Keep comments concise and do not expose API keys, tokens, or internal IDs in manager-facing text.
 """
         cmd = [self.cfg.hermes_bin, "chat", "-q", prompt, "--cli", "-Q", "--accept-hooks", "--yolo"]
@@ -445,7 +454,7 @@ def run_server(cfg: Config) -> None:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="Trello -> Hermes bridge")
-    parser.add_argument("command", nargs="?", default="serve", choices=("serve", "comment", "move"))
+    parser.add_argument("command", nargs="?", default="serve", choices=("serve", "comment", "move", "assign", "get-card"))
     parser.add_argument("card_id", nargs="?")
     parser.add_argument("value", nargs="?")
     parser.add_argument("--config", default=None, help="path to config.env")
@@ -468,6 +477,10 @@ def main() -> int:
         if not args.value:
             parser.error("move requires LIST_ID")
         client.move_card(args.card_id, args.value)
+    elif args.command == "assign":
+        if not args.value:
+            parser.error("assign requires MEMBER_ID")
+        client.assign_member(args.card_id, args.value)
     elif args.command == "get-card":
         max_comments = int(args.value) if args.value else 20
         card = client.get_card(args.card_id, max_comments)
