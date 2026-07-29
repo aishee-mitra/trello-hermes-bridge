@@ -21,7 +21,7 @@ Turn explicit Trello work allocation into a **detached Hermes Agent run** — no
 - 🧠 **Async worker spawning** — detached Hermes worker gets full card context
 - 📋 **Lifecycle management** — `Todo` → `Doing` → `Stuck` → `Done` → `Dropped`
 - 🔁 **Deduplication** — same card/trigger ignored within a configurable window
-- 🌐 **Cloudflare-tunnel friendly** — binds to `192.168.0.99:<port>`
+- 🌐 **Cloudflare-tunnel friendly** — binds to configurable `BIND_HOST:<port>`
 - 📦 **Zero external dependencies** — stdlib only
 - 🚀 **systemd user service** — auto-start + linger
 
@@ -47,7 +47,7 @@ systemctl --user enable --now trello-bot
 systemctl --user status trello-bot
 ```
 
-Expose the bridge with Cloudflare tunnel on the configured bind address, register a Trello board webhook to `https://<host>/webhook`, and you’re live.
+Expose the bridge with Cloudflare tunnel on `BIND_HOST:BIND_PORT`, register a Trello board webhook to `https://<host>/webhook`, and you’re live.
 
 ---
 
@@ -65,6 +65,8 @@ Expose the bridge with Cloudflare tunnel on the configured bind address, registe
 | `MANAGER_TRELLO_MEMBER_ID` | Manager member ID |
 | `MANAGER_TRELLO_USERNAME` | Manager username for mentions |
 | `LIST_ID_DOING/STUCK/DONE/DROPPED` | Lifecycle list IDs |
+| `BIND_HOST` | Bind address, defaults to `0.0.0.0` |
+| `BIND_PORT` | Bind port, defaults to `8787` |
 
 All identities are configurable. No hardcoded usernames, member IDs, board IDs, list IDs, or secrets in source.
 
