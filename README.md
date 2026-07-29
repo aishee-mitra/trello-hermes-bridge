@@ -31,8 +31,8 @@ Turn explicit Trello work allocation into a **detached Hermes Agent run** — no
 ## 🚀 Quick Start
 
 ```bash
-git clone https://github.com/aishee-mitra/trello-bot.git
-cd trello-bot
+git clone https://github.com/aishee-mitra/trello-hermes-bridge.git
+cd trello-hermes-bridge
 cp config.env.example config.env
 chmod 600 config.env
 $EDITOR config.env
@@ -161,5 +161,5 @@ MIT — do anything, but don’t blame us if the cards move themselves. 🤷‍�
 ---
 
 <p align="center">
-  Built with 🐍 + 🤖 · Pairs nicely with <a href="https://trello.com">Trello</a> + <a href="https://github.com/aishee-mitra/trello-bot">this repo</a>
+  Built with 🐍 + 🤖 · Pairs nicely with <a href="https://trello.com">Trello</a> + <a href="https://github.com/aishee-mitra/trello-hermes-bridge">this repo</a>
 </p>

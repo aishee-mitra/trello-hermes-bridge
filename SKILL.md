@@ -11,7 +11,7 @@ Use this skill when installing or verifying the trello-bot full stack for a new 
 
 ## Install Steps
 
-1. Clone and enter repo: `git clone https://github.com/aishee-mitra/trello-bot.git && cd trello-bot`. Do not use `--add-readme`.
+1. Clone and enter repo: `git clone https://github.com/aishee-mitra/trello-hermes-bridge.git && cd trello-hermes-bridge`. Do not use `--add-readme`.
 
 2. Copy config: `cp config.env.example config.env && chmod 600 config.env`.
 
