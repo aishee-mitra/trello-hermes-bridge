@@ -101,7 +101,8 @@ Trello card + lists
 
 Add a label to any Trello card with the pattern `model:<provider>:<full model id>` to override the default model for that task:
 
-- `model:openrouter:openai/gpt-4` — uses OpenRouter with model ID `openai/gpt-4`
+- `model:openrouter:anthropic/claude-3.5-sonnet` — uses OpenRouter with model ID `anthropic/claude-3.5-sonnet`
+- `model:openrouter:tencent/hy3:free` — uses OpenRouter with model ID `tencent/hy3:free`
 - `model:openai:gpt-4` — uses OpenAI provider with model ID `gpt-4`  
 - `model::gpt-4` — uses the default provider with model ID `gpt-4`
 
