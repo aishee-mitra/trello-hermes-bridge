@@ -42,9 +42,10 @@ class Config:
     agent_username: str
     manager_member_id: str
     manager_username: str
-    list_in_progress: str
-    list_blocked: str
+    list_doing: str
+    list_stuck: str
     list_done: str
+    list_dropped: str
     bind_host: str = "192.168.0.99"
     bind_port: int = 8787
     hermes_bin: str = "/home/aishee/.local/bin/hermes"
@@ -83,9 +84,10 @@ class Config:
             agent_username=required("AGENT_TRELLO_USERNAME"),
             manager_member_id=required("MANAGER_TRELLO_MEMBER_ID"),
             manager_username=required("MANAGER_TRELLO_USERNAME"),
-            list_in_progress=required("LIST_ID_IN_PROGRESS"),
-            list_blocked=required("LIST_ID_BLOCKED"),
+            list_doing=required("LIST_ID_DOING"),
+            list_stuck=required("LIST_ID_STUCK"),
             list_done=required("LIST_ID_DONE"),
+            list_dropped=required("LIST_ID_DROPPED"),
             bind_host=optional("BIND_HOST", "192.168.0.99"),
             bind_port=int(optional("BIND_PORT", "8787")),
             hermes_bin=optional("HERMES_BIN", "/home/aishee/.local/bin/hermes"),
@@ -239,7 +241,7 @@ class Bridge:
             self.logger.warning("trigger had no card id")
             return "invalid"
         card = self.client.get_card(card_id_value, self.cfg.max_card_comments)
-        self.client.move_card(card_id_value, self.cfg.list_in_progress)
+        self.client.move_card(card_id_value, self.cfg.list_doing)
         self.client.add_comment(
             card_id_value,
             f"Picked up by @{self.cfg.agent_username}. I’ll work this and report back here.",
@@ -261,13 +263,15 @@ config and does not require secrets in this prompt:
   python3 {command_hint} move CARD_ID LIST_ID
 
 Use these configured lifecycle list IDs with the move command:
-  In Progress: {self.cfg.list_in_progress}
-  Blocked: {self.cfg.list_blocked}
+  Doing: {self.cfg.list_doing}
+  Stuck: {self.cfg.list_stuck}
   Done: {self.cfg.list_done}
+  Dropped: {self.cfg.list_dropped}
 Move the card to the configured Done list when complete. If blocked, add a
 concise comment explaining the blocker, mention @{self.cfg.manager_username},
-and move it to the configured Blocked list. Keep comments concise and do not
-expose API keys, tokens, or internal IDs in manager-facing text.
+and move it to the configured Stuck list. If the work is cancelled or out of
+scope, explain why briefly and move it to Dropped. Keep comments concise and
+do not expose API keys, tokens, or internal IDs in manager-facing text.
 """
         cmd = [self.cfg.hermes_bin, "chat", "-q", prompt, "--cli", "-Q", "--accept-hooks", "--yolo"]
         if self.cfg.hermes_model:

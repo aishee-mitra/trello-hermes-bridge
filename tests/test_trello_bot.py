@@ -22,9 +22,10 @@ def config():
         agent_username="aishee",
         manager_member_id="manager-id",
         manager_username="sayan",
-        list_in_progress="doing",
-        list_blocked="blocked",
+        list_doing="doing",
+        list_stuck="stuck",
         list_done="done",
+        list_dropped="dropped",
     )
 
 

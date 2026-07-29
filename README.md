@@ -9,15 +9,17 @@ allocation into a detached Hermes Agent run.
    agent username in a card comment.
 2. Trello sends a signed board webhook to `/webhook`.
 3. The bridge verifies the signature, filters and deduplicates the trigger,
-   fetches the card context, moves it to **In Progress**, and posts one receipt.
+   fetches the card context, moves it to **Doing**, and posts one receipt.
 4. A detached Hermes worker performs the task and uses the local CLI for
    comments and list transitions.
-5. The worker moves completed cards to **Done**, or blocked cards to **Blocked**
-   and mentions the configured manager username.
+5. The worker moves completed cards to **Done**, blocked cards to **Stuck**
+   and mentions the configured manager username, or cancelled/out-of-scope
+   cards to **Dropped**.
 
-The bridge deliberately does not trigger on ordinary card moves, card creation,
-or arbitrary comments. Assignment and explicit mention are the only first-class
-triggers.
+The recommended board lists are **Todo**, **Doing**, **Stuck**, **Done**, and
+**Dropped**. The bridge deliberately does not trigger on ordinary card moves,
+card creation, or arbitrary comments. Assignment and explicit mention are the
+only first-class triggers.
 
 ## Configuration
 
