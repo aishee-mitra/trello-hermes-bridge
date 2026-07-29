@@ -168,6 +168,9 @@ def is_agent_trigger(action: dict[str, Any], cfg: Config) -> tuple[bool, str]:
 
 
 def dedup_key(action: dict[str, Any], signal: str) -> str:
+    action_id = action.get("id")
+    if action_type(action) == "commentCard" and action_id:
+        return f"{card_id(action)}:{signal}:{action_id}"
     return f"{card_id(action)}:{signal}"
 
 
@@ -260,10 +263,6 @@ class Bridge:
             return "invalid"
         card = self.client.get_card(card_id_value, self.cfg.max_card_comments)
         self.client.move_card(card_id_value, self.cfg.list_doing)
-        self.client.add_comment(
-            card_id_value,
-            f"Picked up by @{self.cfg.agent_username}. I’ll work this and report back here.",
-        )
         self.spawn_worker(card, signal)
         return "spawned"
 

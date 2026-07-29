@@ -95,6 +95,24 @@ class TrelloBotTests(unittest.TestCase):
         self.assertEqual(trello_bot.board_id(action), "board")
         self.assertEqual(trello_bot.is_agent_trigger(action, config()), (True, "mentioned"))
 
+    def test_dedup_uses_comment_id_for_comment_triggers(self):
+        action = {
+            "id": "comment-1",
+            "type": "commentCard",
+            "data": {"card": {"id": "card"}, "text": "@aishee first"},
+        }
+        self.assertEqual(
+            trello_bot.dedup_key(action, "mentioned"), "card:mentioned:comment-1"
+        )
+        second = {
+            "id": "comment-2",
+            "type": "commentCard",
+            "data": {"card": {"id": "card"}, "text": "@aishee cancel"},
+        }
+        self.assertEqual(
+            trello_bot.dedup_key(second, "mentioned"), "card:mentioned:comment-2"
+        )
+
 
 if __name__ == "__main__":
     unittest.main()
