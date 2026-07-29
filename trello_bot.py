@@ -321,27 +321,29 @@ class Bridge:
 Card context:
 {card_json}
 
-Start by posting exactly one pickup comment on the card using the CLI:
+Required first actions:
+1. Post exactly one pickup comment on the card:
+   python3 {command_hint} comment {card.get("id","CARD_ID")} "Picked up by @{self.cfg.agent_username}. I’ll work this and report back here."
+2. Move the card to the configured Doing list:
+   python3 {command_hint} move {card.get("id","CARD_ID")} {self.cfg.list_doing}
 
-  python3 {command_hint} comment {card.get("id","CARD_ID")} "Picked up by @{self.cfg.agent_username}. I’ll work this and report back here."
-
-Post no other pickup comment before doing the actual work.
-
-Use the local Trello bridge CLI for write-back; it reads credentials from its local
-config and does not require secrets in this prompt:
+After pickup is complete, continue with the actual work. Use the local Trello bridge CLI for all write-back; it reads credentials from local config.env and does not require secrets in this prompt:
   python3 {command_hint} comment CARD_ID TEXT
   python3 {command_hint} move CARD_ID LIST_ID
 
-Use these configured lifecycle list IDs with the move command:
+Configured lifecycle list IDs:
   Doing: {self.cfg.list_doing}
   Stuck: {self.cfg.list_stuck}
   Done: {self.cfg.list_done}
   Dropped: {self.cfg.list_dropped}
-Move the card to the configured Done list when complete. If blocked, add a
-concise comment explaining the blocker, mention @{self.cfg.manager_username},
-and move it to the configured Stuck list. If the work is cancelled or out of
-scope, explain why briefly and move it to Dropped. Keep comments concise and
-do not expose API keys, tokens, or internal IDs in manager-facing text.
+
+Mandatory transition rules:
+- If the task is cancelled or out of scope, explain briefly and move it to Dropped.
+- If the task is blocked, post a concise comment with the blocker and mention @{self.cfg.manager_username}, then move it to Stuck.
+- When the task is complete, move it to Done.
+
+Do NOT leave the card in Doing after reporting a blocker. Execute the move in the same turn as the blocker comment when possible.
+Keep comments concise and do not expose API keys, tokens, or internal IDs in manager-facing text.
 """
         cmd = [self.cfg.hermes_bin, "chat", "-q", prompt, "--cli", "-Q", "--accept-hooks", "--yolo"]
         if self.cfg.hermes_model:
