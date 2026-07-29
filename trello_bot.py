@@ -152,6 +152,10 @@ def normalize_webhook_payload(payload: dict[str, Any]) -> dict[str, Any]:
     return action
 
 
+def normalize_pickup_text(text: str) -> str:
+    return " ".join(text.replace("’", "'").replace("`", "'").split())
+
+
 def is_agent_trigger(action: dict[str, Any], cfg: Config) -> tuple[bool, str]:
     """Return whether an action is an explicit assignment or mention trigger."""
     payload_board_id = board_id(action)
@@ -175,7 +179,8 @@ def dedup_key(action: dict[str, Any], signal: str) -> str:
 
 
 def is_agent_authored_comment(action: dict[str, Any], cfg: Config) -> bool:
-    member = member_from_action(action)
+    member = action.get("data") or {}
+    member = member.get("member") or member.get("idMember") or {}
     if isinstance(member, dict) and member.get("id") == cfg.agent_member_id:
         return True
     author = action.get("memberCreator") or {}
@@ -259,10 +264,13 @@ class Bridge:
         return any(token in text for token in ("cancel this", "drop this", "abort", "stop this", "disregard"))
 
     def _already_picked_up(self, card: dict[str, Any]) -> bool:
-        pickup = f"Picked up by @{self.cfg.agent_username}. I'll work this and report back here."
+        normalized_pickups = {
+            normalize_pickup_text(f"Picked up by @{self.cfg.agent_username}. I'll work this and report back here."),
+            normalize_pickup_text(f"Picked up by @{self.cfg.agent_username}. I’ll work this and report back here."),
+        }
         for comment in card.get("comments") or []:
-            text = str(comment.get("data", {}).get("text") or comment.get("text") or "")
-            if text.strip() == pickup:
+            text = normalize_pickup_text(str(comment.get("data", {}).get("text") or comment.get("text") or ""))
+            if text.strip() in normalized_pickups:
                 return True
         return False
 
