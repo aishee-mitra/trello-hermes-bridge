@@ -96,6 +96,21 @@ python3 -m unittest discover -s tests -v
 python3 -m py_compile trello_bot.py
 ```
 
+## Fire-and-forget operation
+
+This project is designed as a **fire-and-forget** bridge, similar in spirit to
+the Plane bridge it parallels. After setup and the initial verification,
+
+- the webhook receiver acknowledges valid requests immediately,
+- worker spawning and Hermes execution happen asynchronously,
+- the worker reports progress back onto the Trello card itself, not as an
+  interactive prompt to the user.
+
+**Corollary:** once a card is accepted, the worker owns its lifecycle and
+should complete it without returning to the manager for confirmation.
+Interrupt or acknowledge the worker manually only when you want to redirect or
+abandon the card.
+
 ## Security notes
 
 - Never commit `config.env`, logs, tokens, or generated state.
