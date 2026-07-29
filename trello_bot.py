@@ -350,7 +350,7 @@ Keep comments concise and do not expose API keys, tokens, or internal IDs in man
         cmd = [self.cfg.hermes_bin, "chat", "-q", prompt, "--cli", "-Q", "--accept-hooks", "--yolo"]
         if self.cfg.hermes_model:
             cmd.extend(["--model", self.cfg.hermes_model])
-        self.logger.info("spawning Hermes worker for card %s", card.get("id", "")[:8])
+        self.logger.info("spawning Hermes worker for card %s", card_id_value[:8])
         proc = subprocess.Popen(
             cmd,
             cwd=self.cfg.project_dir or None,
@@ -359,11 +359,11 @@ Keep comments concise and do not expose API keys, tokens, or internal IDs in man
             start_new_session=True,
             env={**os.environ, "TRELLO_BOT_CONFIG": str(config_path())},
         )
-        self._active_workers[card.get("id", "")] = proc
+        self._active_workers[card_id_value] = proc
         threading.Thread(
             target=self._wait_for_worker,
-            args=(card.get("id", ""), proc),
-            name=f"trello-worker-wait-{card.get('id','')[:8]}",
+            args=(card_id_value, proc),
+            name=f"trello-worker-wait-{card_id_value[:8]}",
             daemon=True,
         ).start()
         return proc
