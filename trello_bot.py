@@ -342,7 +342,7 @@ First, fetch the card details using the CLI:
   python3 {command_hint} get-card {card_id_value}
 
 Required first actions (execute these after fetching card details):
-1. Post one concise pickup comment on the card based on the card name/context; do NOT use a fixed template sentence.
+1. Post one concise pickup comment on the card based on the card name/context; do NOT use a fixed template sentence. A good pattern is: start with the card title or intent in your own words, then note the trigger and next step.
 2. Move the card to the configured Doing list:
    python3 {command_hint} move {card_id_value} {self.cfg.list_doing}
 
