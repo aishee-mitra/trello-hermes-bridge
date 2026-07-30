@@ -387,11 +387,13 @@ Keep comments concise and do not expose API keys, tokens, or internal IDs in man
             cmd.extend(["--model", model_override])
             self.logger.info("spawning worker with provider=%s model=%s", provider_override, model_override)
         self.logger.info("spawning Hermes worker for card %s", card_id_value[:8])
+        worker_log = Path(self.cfg.project_dir or Path(__file__).parent) / "workers" / f"{card_id_value[:8]}.log"
+        worker_log.parent.mkdir(parents=True, exist_ok=True)
         proc = subprocess.Popen(
             cmd,
             cwd=self.cfg.project_dir or None,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
+            stdout=worker_log.open("ab"),
+            stderr=subprocess.STDOUT,
             start_new_session=True,
             env={**os.environ, "TRELLO_BOT_CONFIG": str(config_path())},
         )
