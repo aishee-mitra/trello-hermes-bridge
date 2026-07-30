@@ -336,6 +336,7 @@ class Bridge:
         prompt = f"""Work the Trello card below (card id: {card_id_value}). This run was triggered by {signal}.
 
 Card description: {card.get('desc', '')}
+Origin list id: {origin_list}
 
 First, fetch the card details using the CLI:
   python3 {command_hint} get-card {card_id_value}
