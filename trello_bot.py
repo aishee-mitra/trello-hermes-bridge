@@ -341,8 +341,8 @@ First, fetch the card details using the CLI:
   python3 {command_hint} get-card {card_id_value}
 
 Required first actions (execute these after fetching card details):
-1. Post exactly one pickup comment on the card:
-   python3 {command_hint} comment {card_id_value} "Picked up by @{self.cfg.agent_username}. I'll work this and report back here."
+1. Post one concise pickup comment on the card:
+   python3 {command_hint} comment {card_id_value} "Picked up: {card.get('name', card_id_value)}. Trigger: {signal}. I’ll update this card after meaningful milestones."
 2. Move the card to the configured Doing list:
    python3 {command_hint} move {card_id_value} {self.cfg.list_doing}
 
@@ -360,7 +360,7 @@ Progress reporting:
 - After completing meaningful chunks, post ONE concise progress comment:
   what changed, what’s blocked, and what’s next.
 - Do not comment after every tiny step or flood the card.
-- You may post at most 1-2 progress comments on a long task in addition to pickup and completion.
+- For very long tasks, you may post up to 5 progress comments in total; aim for 2 well-placed updates plus pickup and completion.
 
 Configured lifecycle list IDs:
   Doing: {self.cfg.list_doing}
@@ -374,7 +374,7 @@ Configured member IDs:
 Mandatory transition rules:
 - If the task is cancelled or out of scope, explain briefly and move it to Dropped.
 - If the task is blocked/stuck, you MUST:
-  1. Post a concise comment explaining the blocker and what you need from @{self.cfg.manager_username}
+  1. Post a concise comment explaining the blocker and what you need from @{self.cfg.manager_username}; mention them inline so this exact wording appears in Trello, and use the same sentence for your prompt response when referring back to the blocker.
   2. Move the card to Stuck ({self.cfg.list_stuck})
   3. Assign the card to @{self.cfg.manager_username} using: python3 {command_hint} assign CARD_ID {self.cfg.manager_member_id}
 - When the task is complete, move it to Done.
