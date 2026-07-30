@@ -374,7 +374,10 @@ Configured member IDs:
 Mandatory transition rules:
 - If the task is cancelled or out of scope, explain briefly and move it to Dropped.
 - If the task is blocked/stuck, you MUST:
-  1. Post a concise comment explaining the blocker and what you need from @{self.cfg.manager_username}; mention them inline so this exact wording appears in Trello, and use the same sentence for your prompt response when referring back to the blocker.
+  1. Post exactly one comment on the card that clearly states:
+     - what is blocking progress, and
+     - what you need from @{self.cfg.manager_username}.
+     Mention @{self.cfg.manager_username} inline so they are notified.
   2. Move the card to Stuck ({self.cfg.list_stuck})
   3. Assign the card to @{self.cfg.manager_username} using: python3 {command_hint} assign CARD_ID {self.cfg.manager_member_id}
 - When the task is complete, move it to Done.
