@@ -351,10 +351,16 @@ Required completion actions (execute these ONLY when the task is fully complete)
 2. Move the card to Done ({self.cfg.list_done}).
 3. Unassign yourself from the card if applicable.
 
-Use the local Trello bridge CLI for all write-back; it reads credentials from local config.env and does not require secrets in this prompt:
+After completing the required first actions, continue with the actual work. Use the local Trello bridge CLI for all write-back; it reads credentials from local config.env and does not require secrets in this prompt:
   python3 {command_hint} comment CARD_ID TEXT
   python3 {command_hint} move CARD_ID LIST_ID
   python3 {command_hint} assign CARD_ID MEMBER_ID
+
+Progress reporting:
+- After completing meaningful chunks, post ONE concise progress comment:
+  what changed, what’s blocked, and what’s next.
+- Do not comment after every tiny step or flood the card.
+- You may post at most 1-2 progress comments on a long task in addition to pickup and completion.
 
 Configured lifecycle list IDs:
   Doing: {self.cfg.list_doing}
