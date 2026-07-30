@@ -53,6 +53,7 @@ class Config:
     project_dir: str = ""
     dedup_window_seconds: int = 300
     max_card_comments: int = 20
+    worker_timeout_seconds: int = 900
 
     @classmethod
     def from_env_file(cls, path: str | Path) -> "Config":
@@ -94,7 +95,7 @@ class Config:
             hermes_model=optional("HERMES_MODEL", ""),
             project_dir=optional("PROJECT_DIR", str(Path(__file__).parent)),
             dedup_window_seconds=int(optional("DEDUP_WINDOW_SECONDS", "300")),
-            max_card_comments=int(optional("MAX_CARD_COMMENTS", "20")),
+            worker_timeout_seconds=int(optional("WORKER_TIMEOUT_SECONDS", "900")),
         )
 
 
@@ -404,7 +405,39 @@ Keep comments concise and do not expose API keys, tokens, or internal IDs in man
             name=f"trello-worker-wait-{card_id_value[:8]}",
             daemon=True,
         ).start()
+        # Start timeout watcher — kill the worker if it exceeds the time limit
+        threading.Thread(
+            target=self._watch_worker_timeout,
+            args=(card_id_value, proc),
+            name=f"trello-timeout-watch-{card_id_value[:8]}",
+            daemon=True,
+        ).start()
         return proc
+
+    def _watch_worker_timeout(self, card_id_value: str, proc: subprocess.Popen[Any]) -> None:
+        deadline = time.monotonic() + self.cfg.worker_timeout_seconds
+        while proc.poll() is None and time.monotonic() < deadline:
+            time.sleep(30)
+        if proc.poll() is None:
+            self.logger.warning(
+                "worker for card %s exceeded timeout of %ds (started at %s), terminating",
+                card_id_value[:8], self.cfg.worker_timeout_seconds,
+                time.strftime("%H:%M:%S", time.gmtime(time.monotonic() - self.cfg.worker_timeout_seconds)),
+            )
+            try:
+                proc.terminate()
+                proc.wait(timeout=10)
+            except subprocess.TimeoutExpired:
+                proc.kill()
+                proc.wait()
+            # Post a timeout comment on the card so the manager knows what happened
+            try:
+                self.client.add_comment(
+                    card_id_value,
+                    f"Worker timed out after {self.cfg.worker_timeout_seconds}s — card left in its current state. Please pick up manually if needed.",
+                )
+            except Exception as exc:
+                self.logger.error("failed to post timeout comment for card %s: %s", card_id_value[:8], exc)
 
     def _wait_for_worker(self, card_id_value: str, proc: subprocess.Popen[Any]) -> None:
         try:
