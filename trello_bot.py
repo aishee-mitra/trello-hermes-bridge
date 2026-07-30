@@ -346,11 +346,6 @@ Required first actions (execute these after fetching card details):
 2. Move the card to the configured Doing list:
    python3 {command_hint} move {card_id_value} {self.cfg.list_doing}
 
-Required completion actions (execute these ONLY when the task is fully complete):
-1. Post a concise completion comment summarizing what was done.
-2. Move the card to Done ({self.cfg.list_done}).
-3. Unassign yourself from the card if applicable.
-
 After completing the required first actions, continue with the actual work. Use the local Trello bridge CLI for all write-back; it reads credentials from local config.env and does not require secrets in this prompt:
   python3 {command_hint} comment CARD_ID TEXT
   python3 {command_hint} move CARD_ID LIST_ID
@@ -371,16 +366,16 @@ Configured lifecycle list IDs:
 Configured member IDs:
   Manager: {self.cfg.manager_member_id} (@{self.cfg.manager_username})
 
-Mandatory transition rules:
+Mandatory transition rules — these are hard constraints, not suggestions:
 - If the task is cancelled or out of scope, explain briefly and move it to Dropped.
-- If the task is blocked/stuck, you MUST:
-  1. Post exactly one comment on the card that clearly states:
-     - what is blocking progress, and
-     - what you need from @{self.cfg.manager_username}.
-     Mention @{self.cfg.manager_username} inline so they are notified.
+- If the task is blocked/stuck, you MUST perform ALL three steps in sequence:
+  1. Post exactly one comment that clearly states what is blocking progress and what you need from @{self.cfg.manager_username}. Mention @{self.cfg.manager_username} inline so they are notified.
   2. Move the card to Stuck ({self.cfg.list_stuck})
   3. Assign the card to @{self.cfg.manager_username} using: python3 {command_hint} assign CARD_ID {self.cfg.manager_member_id}
-- When the task is complete, move it to Done.
+- After completing any work (success, blocker, or cancel), your FINAL action must be one of these terminal sequences. No text-only response is a valid end state.
+  Success: post one completion comment summarizing what was done, then move card to Done ({self.cfg.list_done}), then unassign yourself from the card.
+  Blocker: execute the full Stuck sequence above.
+  Cancel/drop: move card to Dropped ({self.cfg.list_dropped}), explain briefly.
 
 Do NOT leave the card in Doing after reporting a blocker. Execute all three Stuck actions in sequence.
 Keep comments concise and do not expose API keys, tokens, or internal IDs in manager-facing text.
