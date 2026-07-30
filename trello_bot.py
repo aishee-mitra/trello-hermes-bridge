@@ -311,8 +311,9 @@ class Bridge:
         return "spawned"
 
     def spawn_worker(self, card_id_value: str, signal: str) -> subprocess.Popen[Any]:
-        # Fetch card details to check for model override in labels
+        # Fetch card details to check for model override in labels and record origin list
         card = self.client.get_card(card_id_value, 5)
+        origin_list = card.get("idList")
         
         # Check for model override in labels: look for label with pattern "model:<provider>:<model>"
         provider_override = None
@@ -345,9 +346,15 @@ Required first actions (execute these after fetching card details):
 2. Move the card to the configured Doing list:
    python3 {command_hint} move {card_id_value} {self.cfg.list_doing}
 
-After completing the required first actions, continue with the actual work. Use the local Trello bridge CLI for all write-back; it reads credentials from local config.env and does not require secrets in this prompt:
+Required completion actions (execute these ONLY when the task is fully complete):
+1. Post a concise completion comment summarizing what was done.
+2. Move the card to Done ({self.cfg.list_done}).
+3. Unassign yourself from the card if applicable.
+
+Use the local Trello bridge CLI for all write-back; it reads credentials from local config.env and does not require secrets in this prompt:
   python3 {command_hint} comment CARD_ID TEXT
   python3 {command_hint} move CARD_ID LIST_ID
+  python3 {command_hint} assign CARD_ID MEMBER_ID
 
 Configured lifecycle list IDs:
   Doing: {self.cfg.list_doing}
