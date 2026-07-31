@@ -19,6 +19,7 @@ import json
 import logging
 import os
 import re
+import signal
 import subprocess
 import sys
 import threading
@@ -722,6 +723,15 @@ def run_server(cfg: Config) -> None:
     handler_type = type("ConfiguredWebhookHandler", (WebhookHandler,), {"bridge": bridge})
     server = http.server.ThreadingHTTPServer((cfg.bind_host, cfg.bind_port), handler_type)
     logging.info("listening on %s:%s", cfg.bind_host, cfg.bind_port)
+
+    def graceful_shutdown(signum, frame):
+        logging.info("received signal %s, shutting down gracefully", signum)
+        bridge._save_state()
+        server.shutdown()
+
+    signal.signal(signal.SIGINT, graceful_shutdown)
+    signal.signal(signal.SIGTERM, graceful_shutdown)
+
     server.serve_forever()
 
 
