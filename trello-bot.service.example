@@ -5,8 +5,11 @@ Wants=network-online.target
 
 [Service]
 Type=simple
-WorkingDirectory=/home/aishee/Programs/trello-bot
-ExecStart=/usr/bin/python3 /home/aishee/Programs/trello-bot/trello_bot.py serve --config /home/aishee/Programs/trello-bot/config.env
+# Update WorkingDirectory to match where you cloned the repo
+# This will be auto-replaced by the installer script with the correct path
+WorkingDirectory=/home/myuser/workspace/trello-hermes-bridge
+# Update the path below to match your setup (or use $REPO_DIR from installer)
+ExecStart=/usr/bin/python3 /home/myuser/workspace/trello-hermes-bridge/trello_bot.py serve --config /home/myuser/workspace/trello-hermes-bridge/config.env
 Restart=on-failure
 RestartSec=5
 
