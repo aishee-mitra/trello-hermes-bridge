@@ -2,7 +2,9 @@ import base64
 import hashlib
 import hmac
 import json
+import tempfile
 import unittest
+from pathlib import Path
 from unittest.mock import patch
 
 import trello_bot
@@ -13,6 +15,7 @@ class Config(trello_bot.Config):
 
 
 def config():
+    temp_dir = tempfile.mkdtemp(prefix="trello-hermes-tests-", dir=tempfile.gettempdir())
     return trello_bot.Config(
         api_key="key",
         token="token",
@@ -27,6 +30,7 @@ def config():
         list_stuck="stuck",
         list_done="done",
         list_dropped="dropped",
+        project_dir=temp_dir,
     )
 
 
@@ -225,6 +229,29 @@ class TrelloBotTests(unittest.TestCase):
             bridge._handle_worker_exit("card")
 
         self.assertEqual(spawn_worker.call_count, 1)
+
+    def test_bridge_loads_retry_state_from_disk(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            state_path = Path(temp_dir) / "bridge_state.json"
+            state_path.write_text(json.dumps({"card": {"retry_count": 1}}), encoding="utf-8")
+            cfg = trello_bot.Config(
+                api_key="key",
+                token="token",
+                webhook_secret="secret",
+                callback_url="https://example.test/webhook",
+                board_id="board",
+                agent_member_id="agent-id",
+                agent_username="aishee",
+                manager_member_id="manager-id",
+                manager_username="sayan",
+                list_doing="doing",
+                list_stuck="stuck",
+                list_done="done",
+                list_dropped="dropped",
+                project_dir=temp_dir,
+            )
+            bridge = trello_bot.Bridge(cfg, client=FakeTrelloClient({"id": "card", "idList": cfg.list_doing, "desc": "", "labels": []}))
+            self.assertEqual(bridge._retry_counts.get("card"), 1)
 
 
 if __name__ == "__main__":

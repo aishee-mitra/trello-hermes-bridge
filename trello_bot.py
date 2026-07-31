@@ -273,7 +273,9 @@ class Bridge:
         self._active_workers: dict[str, subprocess.Popen[Any]] = {}
         self._retry_counts: dict[str, int] = {}
         self._log_handles: dict[str, Any] = {}
+        self._state_path = Path(self.cfg.project_dir or Path(__file__).parent) / "bridge_state.json"
         self.logger = logging.getLogger("trello-bot")
+        self._load_state()
 
     def _cancel_keywords(self, action: dict[str, Any]) -> bool:
         text = (comment_text(action) or "").lower()
@@ -295,6 +297,28 @@ class Bridge:
 
     def _is_terminal_state(self, card: dict[str, Any]) -> bool:
         return str(card.get("idList", "")) in self._terminal_list_ids()
+
+    def _load_state(self) -> None:
+        if not self._state_path.exists():
+            return
+        try:
+            data = json.loads(self._state_path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            self.logger.warning("failed to load bridge state from %s", self._state_path)
+            return
+        for card_id_value, entry in (data or {}).items():
+            if isinstance(entry, dict):
+                retry_count = entry.get("retry_count")
+                if isinstance(retry_count, int):
+                    self._retry_counts[str(card_id_value)] = retry_count
+
+    def _save_state(self) -> None:
+        try:
+            self._state_path.parent.mkdir(parents=True, exist_ok=True)
+            payload = {card_id_value: {"retry_count": retry_count} for card_id_value, retry_count in self._retry_counts.items()}
+            self._state_path.write_text(json.dumps(payload, indent=2, sort_keys=True), encoding="utf-8")
+        except OSError as exc:
+            self.logger.warning("failed to persist bridge state to %s: %s", self._state_path, exc)
 
     def _prune_worker_logs(self) -> None:
         log_dir = Path(self.cfg.project_dir or Path(__file__).parent) / "workers"
@@ -338,14 +362,17 @@ class Bridge:
         if self._is_terminal_state(card):
             self.logger.info("worker completed for card %s; current list %s is terminal", card_id_value[:8], card.get("idList"))
             self._retry_counts.pop(card_id_value, None)
+            self._save_state()
             return
         retries = self._retry_counts.get(card_id_value, 0)
         if retries < 1:
             self._retry_counts[card_id_value] = retries + 1
+            self._save_state()
             self.logger.warning("worker exited without moving card %s to a terminal list; retrying once", card_id_value[:8])
             self.spawn_worker(card_id_value, "retry")
             return
         self.logger.warning("worker exited without moving card %s to a terminal list; no retries remain", card_id_value[:8])
+        self._retry_counts.pop(card_id_value, None)
         try:
             self.client.add_comment(
                 card_id_value,
@@ -353,6 +380,7 @@ class Bridge:
             )
         except Exception as exc:
             self.logger.error("failed to comment on incomplete run for card %s: %s", card_id_value[:8], exc)
+        self._save_state()
 
     def process(self, action: dict[str, Any]) -> str:
         # First check if this is an agent-authored comment - ignore immediately to prevent loops
