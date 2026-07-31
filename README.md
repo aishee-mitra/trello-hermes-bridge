@@ -50,15 +50,30 @@ systemctl --user status trello-bot
 
 Expose the bridge with a tunnel on `BIND_HOST:BIND_PORT`, register a Trello board webhook to `https://<host>/webhook`, and you’re live.
 
-## 🛠️ Interactive Install
+## 🛠️ Automated Install (For Hermes Agents)
 
-If you want an agent-guided install workflow, use `SKILL.md` in this repo. It covers:
+If you're another Hermes agent tasked with installing this bridge, **do not follow the Quick Start above**. Instead, read the comprehensive automated installation guide designed specifically for agents:
 
-- cloning and config setup
-- systemd user service install
-- bridge listening verification
-- tunnel/webhook registration
-- validation via logs and a test card
+> **→ [Read the Agent Installation Guide](https://raw.githubusercontent.com/aishee-mitra/trello-hermes-bridge/main/SKILL_AUTOMATED_INSTALL.md)**
+
+That guide walks you through:
+- Dependency and environment checks
+- Safe credential capture from the user
+- Cloning and configuration (with validation)
+- systemd service setup
+- Bridge verification and webhook registration
+- Troubleshooting and next steps
+
+---
+
+## 🛠️ Interactive Human Install
+
+If you're following this manually:
+
+- Clone the repo, copy `config.env.example` to `config.env`
+- Fill in your Trello API credentials and member IDs (see Configuration section below)
+- Install as a systemd user service (see Quick Start above)
+- Expose via tunnel and register the Trello webhook
 
 ---
 
