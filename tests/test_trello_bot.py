@@ -3,6 +3,7 @@ import hashlib
 import hmac
 import json
 import unittest
+from unittest.mock import patch
 
 import trello_bot
 
@@ -27,6 +28,26 @@ def config():
         list_done="done",
         list_dropped="dropped",
     )
+
+
+class FakeTrelloClient:
+    def __init__(self, card):
+        self.card = card
+        self.comments = []
+        self.moves = []
+        self.assignments = []
+
+    def get_card(self, card_id_value, max_comments):
+        return dict(self.card)
+
+    def add_comment(self, card_id_value, text):
+        self.comments.append((card_id_value, text))
+
+    def move_card(self, card_id_value, list_id):
+        self.moves.append((card_id_value, list_id))
+
+    def assign_member(self, card_id_value, member_id):
+        self.assignments.append((card_id_value, member_id))
 
 
 class TrelloBotTests(unittest.TestCase):
@@ -170,6 +191,40 @@ class TrelloBotTests(unittest.TestCase):
                 model = model_value.strip(": ")
             self.assertEqual(provider, expected_provider, msg=f"label={label}")
             self.assertEqual(model, expected_model, msg=f"label={label}")
+
+    def test_spawn_worker_skips_cards_already_in_terminal_list(self):
+        cfg = config()
+        client = FakeTrelloClient({"id": "card", "idList": cfg.list_done, "desc": "", "labels": []})
+        bridge = trello_bot.Bridge(cfg, client=client)
+
+        with patch("trello_bot.subprocess.Popen") as popen:
+            result = bridge.spawn_worker("card", "assigned")
+
+        self.assertIsNone(result)
+        popen.assert_not_called()
+
+    def test_wait_for_worker_comments_when_card_stays_in_doing(self):
+        cfg = config()
+        client = FakeTrelloClient({"id": "card", "idList": cfg.list_doing, "desc": "", "labels": []})
+        bridge = trello_bot.Bridge(cfg, client=client)
+
+        with patch.object(bridge, "spawn_worker", return_value=None) as spawn_worker:
+            bridge._handle_worker_exit("card")
+            bridge._handle_worker_exit("card")
+
+        self.assertEqual(spawn_worker.call_count, 1)
+        self.assertEqual(len(client.comments), 1)
+        self.assertIn("did not reach a terminal state", client.comments[0][1])
+
+    def test_incomplete_run_retries_once(self):
+        cfg = config()
+        client = FakeTrelloClient({"id": "card", "idList": cfg.list_doing, "desc": "", "labels": []})
+        bridge = trello_bot.Bridge(cfg, client=client)
+
+        with patch.object(bridge, "spawn_worker", return_value=None) as spawn_worker:
+            bridge._handle_worker_exit("card")
+
+        self.assertEqual(spawn_worker.call_count, 1)
 
 
 if __name__ == "__main__":

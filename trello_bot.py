@@ -265,6 +265,7 @@ class Bridge:
         self.client = client or TrelloClient(cfg)
         self.dedup = Deduplicator(cfg.dedup_window_seconds)
         self._active_workers: dict[str, subprocess.Popen[Any]] = {}
+        self._retry_counts: dict[str, int] = {}
         self.logger = logging.getLogger("trello-bot")
 
     def _cancel_keywords(self, action: dict[str, Any]) -> bool:
@@ -281,6 +282,37 @@ class Bridge:
             if text.strip() in normalized_pickups:
                 return True
         return False
+
+    def _terminal_list_ids(self) -> set[str]:
+        return {self.cfg.list_stuck, self.cfg.list_done, self.cfg.list_dropped}
+
+    def _is_terminal_state(self, card: dict[str, Any]) -> bool:
+        return str(card.get("idList", "")) in self._terminal_list_ids()
+
+    def _handle_worker_exit(self, card_id_value: str) -> None:
+        try:
+            card = self.client.get_card(card_id_value, 0)
+        except Exception as exc:
+            self.logger.error("could not inspect card %s after worker exit: %s", card_id_value[:8], exc)
+            return
+        if self._is_terminal_state(card):
+            self.logger.info("worker completed for card %s; current list %s is terminal", card_id_value[:8], card.get("idList"))
+            self._retry_counts.pop(card_id_value, None)
+            return
+        retries = self._retry_counts.get(card_id_value, 0)
+        if retries < 1:
+            self._retry_counts[card_id_value] = retries + 1
+            self.logger.warning("worker exited without moving card %s to a terminal list; retrying once", card_id_value[:8])
+            self.spawn_worker(card_id_value, "retry")
+            return
+        self.logger.warning("worker exited without moving card %s to a terminal list; no retries remain", card_id_value[:8])
+        try:
+            self.client.add_comment(
+                card_id_value,
+                "Worker exited before the card reached a terminal state. The card did not reach a terminal state; please review it manually.",
+            )
+        except Exception as exc:
+            self.logger.error("failed to comment on incomplete run for card %s: %s", card_id_value[:8], exc)
 
     def process(self, action: dict[str, Any]) -> str:
         # First check if this is an agent-authored comment - ignore immediately to prevent loops
@@ -311,9 +343,16 @@ class Bridge:
         self.spawn_worker(card_id_value, signal)
         return "spawned"
 
-    def spawn_worker(self, card_id_value: str, signal: str) -> subprocess.Popen[Any]:
+    def spawn_worker(self, card_id_value: str, signal: str) -> subprocess.Popen[Any] | None:
         # Fetch card details to check for model override in labels and record origin list
         card = self.client.get_card(card_id_value, 5)
+        if self._is_terminal_state(card):
+            self.logger.info(
+                "skipping worker for card %s because it is already in terminal list %s",
+                card_id_value[:8],
+                card.get("idList"),
+            )
+            return None
         origin_list = card.get("idList")
         
         # Check for model override in labels: look for label with pattern "model:<provider>:<model>"
@@ -442,6 +481,7 @@ Keep comments concise and do not expose API keys, tokens, or internal IDs in man
     def _wait_for_worker(self, card_id_value: str, proc: subprocess.Popen[Any]) -> None:
         try:
             proc.wait()
+            self._handle_worker_exit(card_id_value)
         finally:
             self._active_workers.pop(card_id_value, None)
 
