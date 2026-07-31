@@ -622,7 +622,7 @@ Keep comments concise and do not expose API keys, tokens, or internal IDs in man
                 card_name = card.get("name", card_id_value)
                 self.client.add_comment(
                     card_id_value,
-                    f"Worker timed out after {self.cfg.worker_timeout_seconds}s on \"{card_name}\". The card is in its current state and needs manual review.",
+                    f"Worker timed out after {self.cfg.worker_timeout_seconds}s on \"{card_name}\". Please review the card manually (@{self.cfg.manager_username}).",
                 )
             except Exception as exc:
                 self.logger.error("failed to post timeout comment for card %s: %s", card_id_value[:8], exc)
