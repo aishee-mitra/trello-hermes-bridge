@@ -49,7 +49,7 @@ class Config:
     list_dropped: str
     bind_host: str = "0.0.0.0"
     bind_port: int = 8787
-    hermes_bin: str = "/home/aishee/.local/bin/hermes"
+    hermes_bin: str = "/usr/local/bin/hermes"  # Override via HERMES_BIN env var
     hermes_model: str = ""
     project_dir: str = ""
     dedup_window_seconds: int = 300
@@ -99,7 +99,7 @@ class Config:
             list_dropped=required("LIST_ID_DROPPED"),
             bind_host=optional("BIND_HOST", "0.0.0.0"),
             bind_port=int(optional("BIND_PORT", "8787")),
-            hermes_bin=optional("HERMES_BIN", "/home/aishee/.local/bin/hermes"),
+            hermes_bin=optional("HERMES_BIN", "/usr/local/bin/hermes"),
             hermes_model=optional("HERMES_MODEL", ""),
             project_dir=optional("PROJECT_DIR", str(Path(__file__).parent)),
             dedup_window_seconds=int(optional("DEDUP_WINDOW_SECONDS", "300")),
