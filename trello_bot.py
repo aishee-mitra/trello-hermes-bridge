@@ -59,6 +59,7 @@ class Config:
     worker_log_max_size_bytes: int = 10 * 1024 * 1024
     bridge_state_max_bytes: int = 64 * 1024
     bridge_state_ttl_seconds: int = 7 * 24 * 60 * 60
+    stale_run_timeout_seconds: int = 60 * 60
 
     @classmethod
     def from_env_file(cls, path: str | Path) -> "Config":
@@ -104,6 +105,9 @@ class Config:
             worker_log_retention_days=int(optional("WORKER_LOG_RETENTION_DAYS", "14")),
             worker_log_max_files=int(optional("WORKER_LOG_MAX_FILES", "50")),
             worker_log_max_size_bytes=int(optional("WORKER_LOG_MAX_SIZE_BYTES", str(10 * 1024 * 1024))),
+            bridge_state_max_bytes=int(optional("BRIDGE_STATE_MAX_BYTES", "65536")),
+            bridge_state_ttl_seconds=int(optional("BRIDGE_STATE_TTL_SECONDS", "604800")),
+            stale_run_timeout_seconds=int(optional("STALE_RUN_TIMEOUT_SECONDS", "3600")),
         )
 
 
@@ -274,6 +278,7 @@ class Bridge:
         self.dedup = Deduplicator(cfg.dedup_window_seconds)
         self._active_workers: dict[str, subprocess.Popen[Any]] = {}
         self._retry_counts: dict[str, int] = {}
+        self._run_started_at: dict[str, int] = {}
         self._log_handles: dict[str, Any] = {}
         self._state_path = Path(self.cfg.project_dir or Path(__file__).parent) / "bridge_state.json"
         self.logger = logging.getLogger("trello-bot")
@@ -345,6 +350,18 @@ class Bridge:
         except OSError as exc:
             self.logger.warning("failed to persist bridge state to %s: %s", self._state_path, exc)
 
+    def _mark_stale_run(self, card_id_value: str) -> None:
+        self.logger.warning("marking card %s as stale for manual review", card_id_value[:8])
+        try:
+            self.client.add_comment(
+                card_id_value,
+                "The worker run became stale and the card needs manual review.",
+            )
+        except Exception as exc:
+            self.logger.error("failed to comment on stale run for card %s: %s", card_id_value[:8], exc)
+        self._retry_counts.pop(card_id_value, None)
+        self._save_state()
+
     def _prune_worker_logs(self) -> None:
         log_dir = Path(self.cfg.project_dir or Path(__file__).parent) / "workers"
         if not log_dir.exists():
@@ -388,6 +405,11 @@ class Bridge:
             self.logger.info("worker completed for card %s; current list %s is terminal", card_id_value[:8], card.get("idList"))
             self._retry_counts.pop(card_id_value, None)
             self._save_state()
+            return
+        started_at = self._run_started_at.pop(card_id_value, None)
+        if started_at is not None and int(time.time()) - started_at >= self.cfg.stale_run_timeout_seconds:
+            self.logger.warning("worker run for card %s exceeded stale timeout; marking for manual review", card_id_value[:8])
+            self._mark_stale_run(card_id_value)
             return
         retries = self._retry_counts.get(card_id_value, 0)
         if retries < 1:
@@ -534,6 +556,7 @@ Keep comments concise and do not expose API keys, tokens, or internal IDs in man
             env={**os.environ, "TRELLO_BOT_CONFIG": str(config_path())},
         )
         self._active_workers[card_id_value] = proc
+        self._run_started_at[card_id_value] = int(time.time())
         self._log_handles[card_id_value] = log_handle
         threading.Thread(
             target=self._wait_for_worker,
@@ -574,6 +597,7 @@ Keep comments concise and do not expose API keys, tokens, or internal IDs in man
                 )
             except Exception as exc:
                 self.logger.error("failed to post timeout comment for card %s: %s", card_id_value[:8], exc)
+            self._mark_stale_run(card_id_value)
 
     def _wait_for_worker(self, card_id_value: str, proc: subprocess.Popen[Any]) -> None:
         try:

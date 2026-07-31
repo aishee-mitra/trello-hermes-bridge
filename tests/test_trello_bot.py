@@ -14,9 +14,9 @@ class Config(trello_bot.Config):
     pass
 
 
-def config():
+def config(**overrides):
     temp_dir = tempfile.mkdtemp(prefix="trello-hermes-tests-", dir=tempfile.gettempdir())
-    return trello_bot.Config(
+    values = dict(
         api_key="key",
         token="token",
         webhook_secret="secret",
@@ -32,6 +32,8 @@ def config():
         list_dropped="dropped",
         project_dir=temp_dir,
     )
+    values.update(overrides)
+    return trello_bot.Config(**values)
 
 
 class FakeTrelloClient:
@@ -229,6 +231,16 @@ class TrelloBotTests(unittest.TestCase):
             bridge._handle_worker_exit("card")
 
         self.assertEqual(spawn_worker.call_count, 1)
+
+    def test_stale_run_posts_manual_review_comment(self):
+        cfg = config(stale_run_timeout_seconds=0)
+        client = FakeTrelloClient({"id": "card", "idList": cfg.list_doing, "desc": "", "labels": []})
+        bridge = trello_bot.Bridge(cfg, client=client)
+
+        bridge._mark_stale_run("card")
+
+        self.assertEqual(len(client.comments), 1)
+        self.assertIn("manual review", client.comments[0][1].lower())
 
     def test_bridge_loads_retry_state_from_disk(self):
         with tempfile.TemporaryDirectory() as temp_dir:
