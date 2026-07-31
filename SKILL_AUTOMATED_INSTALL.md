@@ -1,6 +1,6 @@
 # 🤖 Trello-Hermes Bridge: Agent Installation Guide
 
-**Target Audience:** Hermes agents tasked with installing the Trello-Hermes bridge.
+**Target Audience:** Hermes agents tasked with installing the Trello-Hermes bridge on any system.
 
 This guide walks you through a complete, automated installation with validation at each step. **Ask the user for required information as needed.** Never hardcode or guess credentials.
 
@@ -15,15 +15,39 @@ The Trello-Hermes bridge is a local HTTP service that:
 4. Updates the card automatically with results
 
 **Requirements:**
-- Python 3.11+
-- Hermes Agent (installed and configured)
-- Trello board with API access
-- Network tunnel (Cloudflare, Tailscale, etc.) for webhook callback
-- `systemd` user service support (Linux only)
+- **Hermes Agent** (installed and configured — checked FIRST)
+- **Python 3.11+** (stdlib only, no external dependencies)
+- **Linux with systemd** user service support
+- **Network tunnel** (Cloudflare, Tailscale, ngrok, etc.) for webhook callback
+- **Trello board** with API access
 
 ---
 
-## Phase 1: Pre-Installation Checks
+## ⚠️ Critical Prerequisite: Verify Hermes is Installed
+
+**Before doing ANYTHING else, verify Hermes is available on this system.**
+
+```bash
+which hermes
+hermes --version
+```
+
+✅ **Required:** Both commands must succeed. If either fails, Hermes is not installed or not in PATH.
+
+**If Hermes is not installed:**
+> Please install Hermes Agent first. See: https://hermes-agent.nousresearch.com/docs/installation
+
+**If Hermes is installed but not in PATH:**
+```bash
+# Find where Hermes is installed
+find ~ -name "hermes" -type f -executable 2>/dev/null
+
+# Then use the full path when specifying HERMES_BIN later (Phase 3)
+```
+
+---
+
+## Phase 1: Pre-Installation Environment Checks
 
 ### 1.1 Verify Python Version
 
@@ -33,116 +57,174 @@ python3 --version
 
 ✅ **Required:** Python 3.11 or later
 
-### 1.2 Verify Hermes is Installed
-
+**If Python is too old:**
 ```bash
-which hermes
-hermes --version
+python3.11 --version  # or python3.12, python3.13, etc.
 ```
 
-✅ **Required:** Hermes agent must be in PATH
+If you have a newer version available, you can use it in Phase 3 when configuring.
 
-### 1.3 Verify systemd User Service Support
+### 1.2 Verify systemd User Service Support
 
 ```bash
 systemctl --user status
 ```
 
-✅ **Required:** Should return active (or show recent service status). If this fails, you're likely on a non-systemd system (macOS, etc.). Contact the user for alternative deployment strategy.
+✅ **Required:** Should return a status line (may show "active", "inactive", or a recent state). If this fails with "Connection refused" or "System not found", you're likely on a non-systemd system (macOS, some BSD, older Linux distributions). 
 
-### 1.4 Check Network Connectivity
+**If systemd is not available:**
+> This guide only covers systemd-based installations (Linux with systemd user services). For alternative deployments (Docker, systemd --system, manual process management), see the README's advanced sections or contact your deployment team.
+
+### 1.3 Verify Network Access for Public Callback
 
 Ask the user:
-- **Do you have a public tunnel set up?** (Cloudflare Tunnel, Tailscale Funnel, ngrok, etc.)
-- **What is the public callback URL you can expose?** (e.g., `https://myname.example.com/webhook`)
+- **Do you have a way to expose a service publicly?** (Cloudflare Tunnel, Tailscale, ngrok, SSH reverse tunnel, etc.)
+- **Can you get a public URL that routes HTTPS POST requests to a local port?**
 
-You'll need this URL later for Trello webhook registration.
+✅ **Required:** You must be able to expose `http://127.0.0.1:8787` (or your configured port) on the public internet for Trello to send webhooks to.
 
 ---
 
-## Phase 2: Gather Trello Credentials
+## Phase 2: Gather Trello Credentials & Identifiers
 
-Ask the user to provide:
+Ask the user to provide the following. **Never hardcode or guess these values.**
 
 ### 2.1 Trello API Key
-> "Go to https://trello.com/app-key → copy your API Key"
+
+> "Go to https://trello.com/app-key → copy your **API Key** (first box on the page)"
 
 **Validation:**
 ```bash
-# Test with curl
-curl -X GET "https://api.trello.com/1/members/me?key=$API_KEY&token=$TOKEN" | head -20
+API_KEY="<paste-here>"
+TOKEN="<paste-from-next-step>"
+
+# Test the key (you'll validate the token in the next step)
+curl -s -X GET "https://api.trello.com/1/members/me?key=$API_KEY&token=$TOKEN" | head -c 100
 ```
 
-### 2.2 Trello Personal Token
-> "On the same page (https://trello.com/app-key), click 'Token' → copy your Personal Access Token"
+### 2.2 Trello Personal Access Token
 
-**Validation:** Use the curl command above with both KEY and TOKEN.
+> "On the same page (https://trello.com/app-key), find the **Token** section → click 'Token' link → copy your Personal Access Token"
 
-### 2.3 Trello Application Secret
-> "Still on https://trello.com/app-key → find 'App Name' at the top. You'll need to create or retrieve your application secret for HMAC-SHA1 verification. If you don't have one, use your API Key as a fallback (Trello allows this)."
+### 2.3 Trello Webhook Secret
 
-### 2.4 Target Board ID
-> "Open your Trello board → copy the board ID from the URL: https://trello.com/b/{BOARD_ID}/..."
+> "For webhook signature verification, use your **API Key** as the secret. Trello standard practice: the API Key serves both as public identifier and shared secret for HMAC-SHA1 signatures."
+
+Save this: `WEBHOOK_SECRET = <same as API_KEY>`
 
 **Validation:**
 ```bash
-curl -X GET "https://api.trello.com/1/boards/$BOARD_ID?key=$API_KEY&token=$TOKEN" | head -20
+curl -s -X GET "https://api.trello.com/1/members/me?key=$API_KEY&token=$TOKEN" | jq '.id, .username'
+# Should show: "user_id" and "username"
 ```
 
-### 2.5 Agent Member ID & Username
-> "On the Trello board, find the member you want to use as the AI agent. Open their member card and copy the member ID from the URL: https://trello.com/c/{CARD_ID}/... or use the Trello API:"
+### 2.4 Target Trello Board ID
+
+> "Open your Trello board in a browser → copy the board ID from the URL: `https://trello.com/b/{BOARD_ID}/...` (copy that 8+ character hex string)"
+
+**Validation:**
+```bash
+BOARD_ID="<paste-here>"
+curl -s -X GET "https://api.trello.com/1/boards/$BOARD_ID?key=$API_KEY&token=$TOKEN" | jq '.name'
+# Should show the board name
+```
+
+### 2.5 Agent Account: Member ID & Username
+
+This is the Trello member account the bridge will use to interact with cards (pick them up, move them, post comments).
+
+**Option A: If the agent has its own Trello account**
 
 ```bash
-curl -X GET "https://api.trello.com/1/members/me?key=$API_KEY&token=$TOKEN" | jq .id,.username
+curl -s -X GET "https://api.trello.com/1/members/me?key=$API_KEY&token=$TOKEN" | jq '.id, .username'
 ```
 
-### 2.6 Manager Member ID & Username
-> "Find your own member ID on the Trello board. This is who will be @mentioned when tasks are blocked or complete."
+Use these values as `AGENT_MEMBER_ID` and `AGENT_USERNAME`.
+
+**Option B: If using a service account or bot member**
 
 ```bash
-curl -X GET "https://api.trello.com/1/members/me?key=$API_KEY&token=$TOKEN" | jq .id,.username
+curl -s -X GET "https://api.trello.com/1/boards/$BOARD_ID/members?key=$API_KEY&token=$TOKEN" | jq '.[] | {id, fullName, username}' | head -20
 ```
 
-### 2.7 List IDs (Doing, Stuck, Done, Dropped)
-> "Create or identify 4 lists on your Trello board: 'Doing', 'Stuck', 'Done', 'Dropped'. Get their IDs:"
+Find the agent/bot account and copy its ID (a 24-character hex string like `507f1f77bcf86cd799439011`) and username.
+
+### 2.6 Manager Account: Member ID & Username
+
+This is the account of the person who will be @mentioned when tasks are blocked or completed. Usually your own account.
 
 ```bash
-curl -X GET "https://api.trello.com/1/boards/$BOARD_ID/lists?key=$API_KEY&token=$TOKEN" | jq '.[] | {name, id}'
+curl -s -X GET "https://api.trello.com/1/members/me?key=$API_KEY&token=$TOKEN" | jq '.id, .username'
 ```
 
-### 2.8 Public Callback URL (Webhook)
-Ask again for confirmation:
-> "What is your public callback URL? (e.g., https://myname.example.com) We'll append `/webhook` to this for Trello to POST to."
+Use these values as `MANAGER_MEMBER_ID` and `MANAGER_USERNAME`.
 
-Store as: `https://myname.example.com/webhook` (note the `/webhook` suffix)
+### 2.7 Lifecycle List IDs (Doing, Stuck, Done, Dropped)
+
+The bridge moves cards through a workflow. Identify or create 4 lists on your Trello board:
+- **Doing:** Cards currently being worked on
+- **Stuck:** Cards blocked waiting for manager input
+- **Done:** Completed cards
+- **Dropped:** Cancelled/out-of-scope cards
+
+Get their IDs:
+
+```bash
+curl -s -X GET "https://api.trello.com/1/boards/$BOARD_ID/lists?key=$API_KEY&token=$TOKEN" | jq '.[] | {name, id}'
+```
+
+Copy the ID for each list. Note them as:
+- `LIST_ID_DOING=<id>`
+- `LIST_ID_STUCK=<id>`
+- `LIST_ID_DONE=<id>`
+- `LIST_ID_DROPPED=<id>`
+
+### 2.8 Public Callback URL (for Webhooks)
+
+This is the public HTTPS URL where Trello will POST webhook events.
+
+Ask the user:
+> "What is your public callback URL? (e.g., `https://myname.example.com`, `https://my-server.ts.net`, or `https://abc123.ngrok.io`)"
+
+**Important:** Trello requires HTTPS. The bridge will handle the `/webhook` path suffix automatically.
+
+Store as: `CALLBACK_URL=https://myname.example.com/webhook` (note the `/webhook` suffix)
 
 ---
 
-## Phase 3: Clone & Configure
+## Phase 3: Clone Repository & Configure
 
 ### 3.1 Clone the Repository
 
+Choose a workspace directory. This is where the bridge code and config will live.
+
 ```bash
-cd /home/aishee/code  # or your preferred workspace
+cd ~/workspace  # or wherever you keep projects
 git clone https://github.com/aishee-mitra/trello-hermes-bridge.git
 cd trello-hermes-bridge
+REPO_DIR=$(pwd)  # Save this for later
+echo "Bridge cloned to: $REPO_DIR"
 ```
 
-### 3.2 Copy and Edit config.env
+### 3.2 Create & Configure config.env
 
 ```bash
 cp config.env.example config.env
 chmod 600 config.env
+```
+
+Edit the file:
+```bash
 $EDITOR config.env
 ```
 
-**Fill in the template** with values from Phase 2:
+**Fill in with values from Phase 2:**
 
 ```env
 # Trello API credentials
 TRELLO_API_KEY=<from 2.1>
 TRELLO_TOKEN=<from 2.2>
-TRELLO_WEBHOOK_SECRET=<from 2.3>
+TRELLO_WEBHOOK_SECRET=<from 2.3, same as API_KEY>
 TRELLO_CALLBACK_URL=<from 2.8, e.g., https://myname.example.com/webhook>
 
 # Board and lifecycle
@@ -163,79 +245,114 @@ BIND_HOST=0.0.0.0
 BIND_PORT=8787
 
 # Hermes integration
-HERMES_BIN=/usr/local/bin/hermes  # or wherever `which hermes` points to
+HERMES_BIN=$(which hermes)  # Auto-detect, or set manually to /path/to/hermes
 HERMES_MODEL=openrouter:tencent/hy3:free  # or your preferred model
 ```
 
+**Important config.env Format Rules:**
+- ✅ Each line: `KEY=VALUE` (no spaces around `=`)
+- ❌ No comments (no `#` characters)
+- ❌ No quotes around values
+- ❌ No trailing spaces
+- 🔒 Keep chmod 600 (readable only by owner)
+
 ### 3.3 Validate config.env
 
-```bash
-python3 -c "
-import os
-from pathlib import Path
+Source the configuration and verify all required variables are set:
 
-config_vars = [
+```bash
+set -a
+source config.env
+set +a
+
+python3 << 'EOF'
+import os
+import sys
+
+required_vars = [
     'TRELLO_API_KEY', 'TRELLO_TOKEN', 'TRELLO_WEBHOOK_SECRET',
     'TRELLO_CALLBACK_URL', 'TRELLO_BOARD_ID',
     'LIST_ID_DOING', 'LIST_ID_STUCK', 'LIST_ID_DONE', 'LIST_ID_DROPPED',
     'AGENT_TRELLO_MEMBER_ID', 'AGENT_TRELLO_USERNAME',
-    'MANAGER_TRELLO_MEMBER_ID', 'MANAGER_TRELLO_USERNAME'
+    'MANAGER_TRELLO_MEMBER_ID', 'MANAGER_TRELLO_USERNAME',
+    'BIND_HOST', 'BIND_PORT', 'HERMES_BIN', 'HERMES_MODEL'
 ]
 
-missing = [var for var in config_vars if not os.environ.get(var)]
+missing = [var for var in required_vars if not os.environ.get(var)]
+
 if missing:
     print(f'❌ Missing required variables: {missing}')
-    exit(1)
-else:
-    print('✅ All required variables are set.')
-" < config.env
+    sys.exit(1)
+
+# Additional checks
+hermes_bin = os.environ.get('HERMES_BIN')
+import subprocess
+try:
+    subprocess.run([hermes_bin, '--version'], capture_output=True, check=True, timeout=5)
+except Exception as e:
+    print(f"❌ HERMES_BIN '{hermes_bin}' is not executable: {e}")
+    sys.exit(1)
+
+print('✅ All required variables are set and validated.')
+EOF
 ```
+
+If this fails, review config.env for typos or missing values.
 
 ---
 
 ## Phase 4: Install systemd User Service
 
-### 4.1 Create Service Directory
+### 4.1 Create systemd User Service Directory
 
 ```bash
 mkdir -p ~/.config/systemd/user
 ```
 
-### 4.2 Copy Service Template
+### 4.2 Copy and Customize Service Template
 
 ```bash
 cp trello-bot.service.example ~/.config/systemd/user/trello-bot.service
 ```
 
-### 4.3 Edit Service File (Optional)
+### 4.3 **MANDATORY: Update WorkingDirectory**
 
-If the working directory or Python path needs adjustment:
+The service file contains a hardcoded working directory. You MUST update it to match where you cloned the repository.
+
+```bash
+REPO_DIR=$(pwd)  # Run this in the cloned repository directory
+sed -i "s|WorkingDirectory=.*|WorkingDirectory=$REPO_DIR|" ~/.config/systemd/user/trello-bot.service
+
+# Verify the change:
+grep "WorkingDirectory=" ~/.config/systemd/user/trello-bot.service
+```
+
+**Example:** If you cloned to `/home/myuser/workspace/trello-hermes-bridge`, the file should show:
+```ini
+WorkingDirectory=/home/myuser/workspace/trello-hermes-bridge
+```
+
+### 4.4 **MANDATORY: Update Python/Hermes Paths (if needed)**
+
+If `python3` or `hermes` are not in your standard PATH, update the service file:
 
 ```bash
 $EDITOR ~/.config/systemd/user/trello-bot.service
 ```
 
-Typical content:
+Change:
 ```ini
-[Unit]
-Description=Trello → Hermes Bridge
-After=network.target
-
-[Service]
-Type=simple
-WorkingDirectory=/home/aishee/code/trello-hermes-bridge
 ExecStart=/usr/bin/python3 trello_bot.py serve
-Restart=on-failure
-RestartSec=10
-StandardOutput=journal
-StandardError=journal
 Environment="PATH=/usr/local/bin:/usr/bin:/bin"
-
-[Install]
-WantedBy=default.target
 ```
 
-### 4.4 Enable & Start Service
+To:
+```ini
+ExecStart=/path/to/python3 trello_bot.py serve
+Environment="PATH=/custom/path:/usr/local/bin:/usr/bin:/bin"
+```
+
+### 4.5 Enable & Start Service
 
 ```bash
 systemctl --user daemon-reload
@@ -243,71 +360,114 @@ systemctl --user enable trello-bot
 systemctl --user start trello-bot
 ```
 
-### 4.5 Verify Service is Running
+### 4.6 Verify Service is Running
 
 ```bash
 systemctl --user status trello-bot
 ```
 
-Should show:
+✅ Should show:
 ```
 ● trello-bot.service - Trello → Hermes Bridge
      Loaded: loaded (...)
      Active: active (running) ...
 ```
 
-### 4.6 Check for Startup Errors
+### 4.7 Check Service Logs
 
 ```bash
 journalctl --user -u trello-bot -n 50 --no-pager
 ```
 
-Should show:
+✅ Should show:
 ```
 trello_bot: listening on 0.0.0.0:8787
 ```
 
 ---
 
-## Phase 5: Expose the Bridge (Tunnel Setup)
+## Phase 5: Expose the Bridge (Public Tunnel Setup)
 
-The bridge runs locally on `BIND_HOST:BIND_PORT` (default `0.0.0.0:8787`). To receive Trello webhooks, it must be publicly accessible.
+The bridge runs locally on `BIND_HOST:BIND_PORT` (default `0.0.0.0:8787`). Trello must be able to POST webhooks to your public callback URL.
 
-### 5.1 Set Up a Public Tunnel
+### 5.0 Choose Your Tunnel Provider
 
-Ask the user which tunnel they prefer:
+Pick ONE based on your setup:
 
-**Option A: Cloudflare Tunnel**
+| Option | Best For | Setup Time | Reliability |
+|--------|----------|-----------|-------------|
+| **Cloudflare Tunnel** | Production, permanent setup | 10 min | High |
+| **Tailscale Funnel** | Already using Tailscale | 2 min | High |
+| **ngrok** | Testing, temporary setup | 2 min | Medium |
+| **SSH Reverse Tunnel** | Server with SSH access | 5 min | Medium |
+
+### 5.1a: Cloudflare Tunnel Setup
+
 ```bash
+# Install cloudflared if not present
+# https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/downloads/
+
 cloudflared tunnel create trello-hermes
 cloudflared tunnel route dns trello-hermes myname.example.com
 cloudflared tunnel run trello-hermes --url http://127.0.0.1:8787
 ```
 
-**Option B: Tailscale Funnel**
+Your callback URL: `https://myname.example.com/webhook`
+
+**Important:** Keep this command running (in a tmux/screen session or systemd service).
+
+### 5.1b: Tailscale Funnel Setup
+
 ```bash
 tailscale funnel on
 tailscale funnel status
-# Output shows: https://<your-machine-name>.ts.net/
-# Use as callback URL
 ```
 
-**Option C: Other (ngrok, etc.)**
+Output shows: `https://<your-machine-name>.ts.net/`
+
+Your callback URL: `https://<your-machine-name>.ts.net/webhook`
+
+### 5.1c: ngrok Setup
+
 ```bash
 ngrok http 8787
-# Copy the public URL (e.g., https://abc123.ngrok.io)
 ```
 
-### 5.2 Verify Bridge is Reachable
+Output shows: `Forwarding https://abc123.ngrok.io -> http://localhost:8787`
 
+Your callback URL: `https://abc123.ngrok.io/webhook`
+
+**Important:** ngrok free tier expires after 2 hours. Keep the tunnel running or restart it periodically.
+
+### 5.2 **CRITICAL: Update config.env with New Callback URL**
+
+After setting up your tunnel, you MUST update `TRELLO_CALLBACK_URL` in config.env:
+
+```bash
+$EDITOR config.env
+```
+
+Update the line:
+```env
+TRELLO_CALLBACK_URL=https://your-new-url-from-tunnel/webhook
+```
+
+Then reload the service:
+```bash
+systemctl --user restart trello-bot
+```
+
+### 5.3 Verify Bridge is Publicly Reachable
+
+**Test locally:**
 ```bash
 curl -X GET http://127.0.0.1:8787/health
 # Should return 200 OK
 ```
 
-Then test from the public URL:
+**Test publicly (from different network or machine):**
 ```bash
-curl -X GET https://myname.example.com/health
+curl -X GET https://your-callback-url-without-webhook/health
 # Should return 200 OK
 ```
 
@@ -315,35 +475,45 @@ curl -X GET https://myname.example.com/health
 
 ## Phase 6: Register Trello Webhook
 
-### 6.1 Create the Webhook via Trello API
+### 6.1 Create the Webhook
+
+Before running the curl command, source your config:
 
 ```bash
-curl -X POST "https://api.trello.com/1/tokens/$TRELLO_TOKEN/webhooks?key=$API_KEY" \
+set -a
+source config.env
+set +a
+```
+
+Then create the webhook:
+
+```bash
+curl -X POST "https://api.trello.com/1/tokens/$TRELLO_TOKEN/webhooks?key=$TRELLO_API_KEY" \
   -H "Content-Type: application/json" \
   -d "{
-    \"callbackURL\": \"https://myname.example.com/webhook\",
+    \"callbackURL\": \"$TRELLO_CALLBACK_URL\",
     \"idModel\": \"$TRELLO_BOARD_ID\",
     \"description\": \"Hermes Bridge Webhook\"
   }"
 ```
 
-Expected response:
+✅ Expected response:
 ```json
 {
-  "id": "webhook_id",
+  "id": "webhook_id_12345",
   "idModel": "board_id",
-  "callbackURL": "https://myname.example.com/webhook",
+  "callbackURL": "https://your-url/webhook",
   "active": true
 }
 ```
 
-### 6.2 Verify Webhook is Active
+### 6.2 Verify Webhook is Registered & Active
 
 ```bash
-curl -X GET "https://api.trello.com/1/tokens/$TRELLO_TOKEN/webhooks?key=$API_KEY" | jq .
+curl -s -X GET "https://api.trello.com/1/tokens/$TRELLO_TOKEN/webhooks?key=$TRELLO_API_KEY" | jq '.[] | {id, callbackURL, active}'
 ```
 
-Should list your webhook with `"active": true`.
+✅ Should list your webhook with `"active": true`.
 
 ---
 
@@ -352,81 +522,47 @@ Should list your webhook with `"active": true`.
 ### 7.1 Create a Test Card
 
 On your Trello board:
-1. Create a card titled "Test: Agent Init"
-2. Move it to the "Doing" list (or leave in "Todo")
-3. Assign it to the agent member
+1. Create a new card titled "Test: Agent Initialization"
+2. Leave it in the **Todo** list (don't move it yet)
+3. **Assign it to the agent member** (trigger the bridge)
 
-### 7.2 Check Logs
+The bridge should:
+1. Receive the webhook
+2. Pick up the card
+3. Move it to Doing
+4. Spawn a Hermes worker
+5. Complete and move to Done
+
+### 7.2 Monitor Bridge Logs in Real-Time
 
 ```bash
 journalctl --user -u trello-bot -f
 ```
 
-You should see:
+Watch for:
 ```
-worker exited for card abc12345; status=done
+worker spawned for card {card_id}
+worker exited for card {card_id}; status=done
 ```
 
-### 7.3 Verify Card was Updated
+### 7.3 Check Worker Output
 
-1. Refresh the Trello card
-2. Should have a pickup comment from the agent
-3. Card should be in the "Done" list (or still in Doing if work is pending)
-4. Check `/workers/{card_id[:8]}.log` for full worker output:
-   ```bash
-   cat workers/abc12345.log
-   ```
-
-### 7.4 Test Manual Trigger
-
-Send a test webhook manually:
+Worker logs are saved in the cloned repository:
 
 ```bash
-# Generate a test signature
-python3 << 'EOF'
-import hmac
-import hashlib
-import base64
-import json
-
-api_key = "YOUR_API_KEY"
-webhook_secret = "YOUR_WEBHOOK_SECRET"
-callback_url = "https://myname.example.com/webhook"
-card_id = "abc123"
-
-# Minimal webhook payload
-payload = {
-  "action": {
-    "type": "addMemberToCard",
-    "idMemberCreator": "agent_member_id",
-    "data": {
-      "card": {"id": card_id, "name": "Test Card"},
-      "idMember": "agent_member_id",
-      "board": {"id": "board_id"}
-    }
-  },
-  "model": {"id": "board_id", "name": "Board Name"}
-}
-
-body = json.dumps(payload).encode()
-sig = base64.b64encode(hmac.new(
-    webhook_secret.encode(),
-    body + callback_url.encode(),
-    hashlib.sha1
-).digest()).decode()
-
-print(f"Signature: {sig}")
-print(f"Body: {body.decode()}")
-EOF
+cd $REPO_DIR  # Navigate to where you cloned the repo
+ls -lah workers/
+tail -50 workers/*.log  # View worker output
 ```
 
-Then POST:
-```bash
-curl -X POST http://127.0.0.1:8787/webhook \
-  -H "Content-Type: application/json" \
-  -H "X-Trello-Webhook-Signature: $SIG" \
-  -d '{...payload...}'
-```
+Each file is named `{card_id_first_8_chars}.log` and contains the worker's complete stdout/stderr.
+
+### 7.4 Verify Card Updates on Trello
+
+1. Refresh the card on your Trello board
+2. ✅ Should have a "Picked up by @agent" comment
+3. ✅ Card should be moved to Done list
+4. ✅ Card should be unassigned (agent released it after completion)
 
 ---
 
@@ -440,56 +576,112 @@ journalctl --user -u trello-bot -n 100 --no-pager
 ```
 
 **Common issues:**
-- `config.env` not found → Check file exists and is readable
-- Python import error → Verify `python3 --version` and stdlib availability
-- `hermes` not in PATH → Check `which hermes` and update HERMES_BIN in config.env
+- `config.env not found` → Verify file exists: `ls -la config.env` (in the repo directory)
+- `config.env: Permission denied` → Fix permissions: `chmod 600 config.env`
+- `python3: command not found` → Update ExecStart in service file with full path
+- `trello_bot.py: No such file or directory` → Update WorkingDirectory in service file (Phase 4.3)
+- `hermes: command not found` → Update HERMES_BIN in config.env
 
-### Problem: Webhook not received
+### Problem: Service is inactive/dead after starting
+
+```bash
+systemctl --user status trello-bot
+systemctl --user start trello-bot
+journalctl --user -u trello-bot -n 100 --no-pager
+```
+
+Check the error messages in journalctl. Common causes:
+- Config file errors (YAML parsing, missing variables)
+- Port already in use: `lsof -i :8787` (and kill the process or change BIND_PORT)
+- Hermes not found: Update HERMES_BIN
+
+### Problem: Webhook not received by bridge
 
 **Check:**
-1. Bridge is listening: `systemctl --user status trello-bot` (active)
-2. Public URL is reachable: `curl https://myname.example.com/health`
-3. Webhook is registered: `curl -X GET "https://api.trello.com/1/tokens/$TOKEN/webhooks?key=$KEY"`
-4. Check logs for signature errors: `journalctl --user -u trello-bot -f`
+1. Bridge is listening: `systemctl --user status trello-bot` (should show "active (running)")
+2. Public URL is reachable: `curl https://your-callback-url/health`
+3. Webhook is registered: `curl -s -X GET "https://api.trello.com/1/tokens/$TOKEN/webhooks?key=$KEY" | jq .`
+4. Bridge logs for errors: `journalctl --user -u trello-bot -f`
+5. Firewall/tunnel is not blocking: Try manually POSTing a test webhook (Phase 7.4 in original guide)
 
-### Problem: Card not updated after assignment
+### Problem: Card not updating after assignment
 
 **Check:**
-1. Worker log file: `cat workers/{card_id[:8]}.log`
-2. Service logs: `journalctl --user -u trello-bot -n 50 --no-pager`
-3. Trello API access: `curl -X GET "https://api.trello.com/1/cards/$CARD_ID?key=$KEY&token=$TOKEN"`
+1. Worker log exists: `ls -lah workers/` (should have new `*.log` file)
+2. Worker log contains errors: `tail -100 workers/{card_id_first_8}.log`
+3. Service logs for worker spawn: `journalctl --user -u trello-bot | grep worker`
+4. Trello API access: `curl -s -X GET "https://api.trello.com/1/cards/$CARD_ID?key=$KEY&token=$TOKEN" | jq '.name'`
 
 ---
 
-## Phase 9: Post-Installation Verification
+## Phase 9: Post-Installation Verification Checklist
 
-Run this checklist:
+Run through this checklist to confirm everything is working:
 
-- [ ] Service is active: `systemctl --user status trello-bot` → "active (running)"
-- [ ] Bridge is reachable: `curl http://127.0.0.1:8787/health` → 200 OK
-- [ ] Public URL works: `curl https://myname.example.com/health` → 200 OK
-- [ ] Webhook registered: `curl -X GET "https://api.trello.com/1/tokens/$TOKEN/webhooks?key=$KEY"` → lists your webhook with `"active": true`
-- [ ] Test card created and assigned → Worker logs show execution
-- [ ] Worker output appears in logs: `journalctl --user -u trello-bot -n 50` shows worker activity
-- [ ] Card was updated (comment, list change) after assignment
+- [ ] Hermes is installed: `which hermes && hermes --version`
+- [ ] Service is active: `systemctl --user status trello-bot` shows "active (running)"
+- [ ] Local bridge reachable: `curl http://127.0.0.1:8787/health` → 200 OK
+- [ ] Public URL reachable: `curl https://your-callback-url/health` → 200 OK
+- [ ] Webhook registered: `curl -s -X GET "https://api.trello.com/1/tokens/$TOKEN/webhooks?key=$KEY" | jq '.[] | select(.active==true)'`
+- [ ] Test card created and assigned to agent
+- [ ] Worker logs created: `ls workers/` (should have new log file)
+- [ ] Card moved to Done on Trello (refresh the page)
+- [ ] Card has "Picked up by @agent" comment
+- [ ] Service logs show successful run: `journalctl --user -u trello-bot -n 50 | grep -E "(worker|error)"`
 
 ---
 
-## Phase 10: Next Steps
+## Phase 10: If Installation Fails — Rollback
 
-1. **Read the Full Documentation**  
-   Check `README.md` for lifecycle management, model override patterns, and security best practices.
+To cleanly remove the bridge and start over:
 
-2. **Understand the Worker Lifecycle**  
-   Workers follow a strict state machine: `Todo` → `Doing` → `Stuck`/`Done`/`Dropped`. Review the SKILL.md in the repo for prompt patterns.
+```bash
+# Stop the service
+systemctl --user stop trello-bot
+systemctl --user disable trello-bot
 
-3. **Monitor in Production**  
-   ```bash
-   journalctl --user -u trello-bot -f  # Live tail of logs
-   ```
+# Remove service file
+rm ~/.config/systemd/user/trello-bot.service
 
-4. **Tune Configuration**  
-   Adjust `WORKER_TIMEOUT_SECONDS`, `MAX_RETRIES`, etc. as needed. All knobs are in `config.env`.
+# Reload systemd
+systemctl --user daemon-reload
+
+# (Optional) Delete the cloned repository
+rm -rf $REPO_DIR
+
+# Fix the issue in your notes
+# Then re-run from Phase 3 (clone) or Phase 4 (service setup)
+```
+
+---
+
+## Phase 11: Production Monitoring
+
+### Monitor Bridge in Real-Time
+
+```bash
+journalctl --user -u trello-bot -f
+```
+
+### Check Service Health Periodically
+
+```bash
+systemctl --user status trello-bot
+```
+
+### Review Worker Logs
+
+```bash
+cd $REPO_DIR
+tail -20 workers/*.log
+```
+
+### Collect Logs for Debugging
+
+```bash
+journalctl --user -u trello-bot -n 500 --no-pager > /tmp/trello-bot-logs.txt
+cat /tmp/trello-bot-logs.txt  # Share if reporting issues
+```
 
 ---
 
@@ -500,31 +692,64 @@ If installation fails at any stage:
 1. **Capture error logs:**
    ```bash
    journalctl --user -u trello-bot -n 200 --no-pager > /tmp/trello-bot-logs.txt
-   cat /tmp/trello-bot-logs.txt
    ```
 
 2. **Test Trello API access:**
    ```bash
-   curl -X GET "https://api.trello.com/1/members/me?key=$KEY&token=$TOKEN" | jq .
+   set -a; source config.env; set +a
+   curl -s -X GET "https://api.trello.com/1/members/me?key=$TRELLO_API_KEY&token=$TRELLO_TOKEN" | jq .
    ```
 
-3. **Check worker logs:**
+3. **Verify all config variables:**
    ```bash
-   ls -lah workers/
-   tail -50 workers/*.log
+   set -a; source config.env; set +a
+   env | grep -E "^(TRELLO_|LIST_|AGENT_|MANAGER_|HERMES_)" | sort
    ```
 
-4. **Verify Python + systemd:**
+4. **Check worker output:**
+   ```bash
+   ls -lah $REPO_DIR/workers/
+   tail -100 $REPO_DIR/workers/*.log
+   ```
+
+5. **Check Python and Hermes versions:**
    ```bash
    python3 --version
-   systemctl --user status
-   which python3
+   which hermes
+   hermes --version
    ```
 
-Share these outputs when reporting issues.
+Share these outputs when opening an issue.
+
+---
+
+## Next Steps
+
+1. **Read the Repository Documentation**  
+   - `README.md` — Lifecycle management, features, architecture
+   - `config.env.example` — All tunable parameters explained
+
+2. **Understand the Worker Lifecycle**  
+   - Cards move: Todo → Doing → (Stuck | Done | Dropped)
+   - Worker must end with a terminal action (move card + optional comment)
+
+3. **Configure Per-Card Model Overrides**  
+   - Add label to card: `model:openrouter:anthropic/claude-3.5-sonnet`
+   - Worker spawns with that model instead of default
+
+4. **Set Up Log Rotation** (Optional)  
+   - Logs grow over time; configure retention in config.env
+   - Default: keep logs for 14 days
+
+5. **Monitor in Production**  
+   ```bash
+   journalctl --user -u trello-bot -f  # Live tail
+   ```
 
 ---
 
 **Installation Complete!** 🎉
 
 The Trello-Hermes bridge is now running and ready to process cards. Assign a card to the agent on your board and watch it execute in real-time.
+
+For questions, issues, or feature requests, see the repository's README and GitHub issues.
