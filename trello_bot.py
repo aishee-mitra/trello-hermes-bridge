@@ -58,6 +58,7 @@ class Config:
     worker_log_max_files: int = 50
     worker_log_max_size_bytes: int = 10 * 1024 * 1024
     bridge_state_max_bytes: int = 64 * 1024
+    bridge_state_ttl_seconds: int = 7 * 24 * 60 * 60
 
     @classmethod
     def from_env_file(cls, path: str | Path) -> "Config":
@@ -308,15 +309,26 @@ class Bridge:
             self.logger.warning("failed to load bridge state from %s", self._state_path)
             return
         for card_id_value, entry in (data or {}).items():
-            if isinstance(entry, dict):
-                retry_count = entry.get("retry_count")
-                if isinstance(retry_count, int):
-                    self._retry_counts[str(card_id_value)] = retry_count
+            if not isinstance(entry, dict):
+                continue
+            retry_count = entry.get("retry_count")
+            if not isinstance(retry_count, int):
+                continue
+            updated_at = entry.get("updated_at")
+            if isinstance(updated_at, (int, float)) and updated_at + self.cfg.bridge_state_ttl_seconds < time.time():
+                continue
+            self._retry_counts[str(card_id_value)] = retry_count
 
     def _save_state(self) -> None:
         try:
             self._state_path.parent.mkdir(parents=True, exist_ok=True)
-            payload = {card_id_value: {"retry_count": retry_count} for card_id_value, retry_count in self._retry_counts.items()}
+            payload = {
+                card_id_value: {
+                    "retry_count": retry_count,
+                    "updated_at": int(time.time()),
+                }
+                for card_id_value, retry_count in self._retry_counts.items()
+            }
             payload = dict(sorted(payload.items(), key=lambda item: item[0]))
             content = json.dumps(payload, indent=2, sort_keys=True)
             if len(content.encode("utf-8")) > self.cfg.bridge_state_max_bytes:
