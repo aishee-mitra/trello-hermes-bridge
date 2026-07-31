@@ -54,6 +54,9 @@ class Config:
     dedup_window_seconds: int = 300
     max_card_comments: int = 20
     worker_timeout_seconds: int = 900
+    worker_log_retention_days: int = 14
+    worker_log_max_files: int = 50
+    worker_log_max_size_bytes: int = 10 * 1024 * 1024
 
     @classmethod
     def from_env_file(cls, path: str | Path) -> "Config":
@@ -96,6 +99,9 @@ class Config:
             project_dir=optional("PROJECT_DIR", str(Path(__file__).parent)),
             dedup_window_seconds=int(optional("DEDUP_WINDOW_SECONDS", "300")),
             worker_timeout_seconds=int(optional("WORKER_TIMEOUT_SECONDS", "900")),
+            worker_log_retention_days=int(optional("WORKER_LOG_RETENTION_DAYS", "14")),
+            worker_log_max_files=int(optional("WORKER_LOG_MAX_FILES", "50")),
+            worker_log_max_size_bytes=int(optional("WORKER_LOG_MAX_SIZE_BYTES", str(10 * 1024 * 1024))),
         )
 
 
@@ -266,6 +272,7 @@ class Bridge:
         self.dedup = Deduplicator(cfg.dedup_window_seconds)
         self._active_workers: dict[str, subprocess.Popen[Any]] = {}
         self._retry_counts: dict[str, int] = {}
+        self._log_handles: dict[str, Any] = {}
         self.logger = logging.getLogger("trello-bot")
 
     def _cancel_keywords(self, action: dict[str, Any]) -> bool:
@@ -288,6 +295,39 @@ class Bridge:
 
     def _is_terminal_state(self, card: dict[str, Any]) -> bool:
         return str(card.get("idList", "")) in self._terminal_list_ids()
+
+    def _prune_worker_logs(self) -> None:
+        log_dir = Path(self.cfg.project_dir or Path(__file__).parent) / "workers"
+        if not log_dir.exists():
+            return
+        try:
+            now = time.time()
+            cutoff = now - (self.cfg.worker_log_retention_days * 24 * 60 * 60)
+            log_files = [path for path in log_dir.glob("*.log") if path.is_file()]
+            for path in log_files:
+                try:
+                    if path.stat().st_mtime < cutoff:
+                        path.unlink()
+                        continue
+                except FileNotFoundError:
+                    continue
+            remaining = sorted(log_files, key=lambda path: path.stat().st_mtime, reverse=True)
+            while len(remaining) > self.cfg.worker_log_max_files:
+                oldest = remaining.pop()
+                try:
+                    oldest.unlink()
+                except FileNotFoundError:
+                    continue
+        except Exception as exc:
+            self.logger.error("failed to prune worker logs: %s", exc)
+
+    def _rotate_worker_log(self, log_path: Path) -> None:
+        if not log_path.exists() or log_path.stat().st_size < self.cfg.worker_log_max_size_bytes:
+            return
+        rotated_path = log_path.with_suffix(log_path.suffix + ".1")
+        if rotated_path.exists():
+            rotated_path.unlink()
+        log_path.rename(rotated_path)
 
     def _handle_worker_exit(self, card_id_value: str) -> None:
         try:
@@ -429,15 +469,19 @@ Keep comments concise and do not expose API keys, tokens, or internal IDs in man
         self.logger.info("spawning Hermes worker for card %s", card_id_value[:8])
         worker_log = Path(self.cfg.project_dir or Path(__file__).parent) / "workers" / f"{card_id_value[:8]}.log"
         worker_log.parent.mkdir(parents=True, exist_ok=True)
+        self._prune_worker_logs()
+        self._rotate_worker_log(worker_log)
+        log_handle = worker_log.open("ab")
         proc = subprocess.Popen(
             cmd,
             cwd=self.cfg.project_dir or None,
-            stdout=worker_log.open("ab"),
+            stdout=log_handle,
             stderr=subprocess.STDOUT,
             start_new_session=True,
             env={**os.environ, "TRELLO_BOT_CONFIG": str(config_path())},
         )
         self._active_workers[card_id_value] = proc
+        self._log_handles[card_id_value] = log_handle
         threading.Thread(
             target=self._wait_for_worker,
             args=(card_id_value, proc),
