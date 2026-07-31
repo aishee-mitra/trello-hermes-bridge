@@ -220,7 +220,7 @@ class TrelloBotTests(unittest.TestCase):
 
         self.assertEqual(spawn_worker.call_count, 1)
         self.assertEqual(len(client.comments), 1)
-        self.assertIn("Please review it manually", client.comments[0][1])
+        self.assertIn("please review when you can", client.comments[0][1])
 
     def test_incomplete_run_retries_once(self):
         cfg = config()
