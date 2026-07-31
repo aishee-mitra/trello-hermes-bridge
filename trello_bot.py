@@ -545,10 +545,10 @@ Mandatory transition rules — these are hard constraints, not suggestions:
   1. Post exactly one comment that clearly states what is blocking progress and what you need from @{self.cfg.manager_username}. Mention @{self.cfg.manager_username} inline so they are notified.
   2. Move the card to Stuck ({self.cfg.list_stuck})
   3. Assign the card to @{self.cfg.manager_username} using: python3 {command_hint} assign CARD_ID {self.cfg.manager_member_id}
-- After completing any work (success, blocker, or cancel), your FINAL action must be one of these terminal sequences. No text-only response is a valid end state.
-  Success: post one completion comment summarizing what was done, then move card to Done ({self.cfg.list_done}), then unassign yourself from the card.
+|- After completing any work (success, blocker, or cancel), your FINAL action must be one of these terminal sequences. No text-only response is a valid end state.
+  Success: post one completion comment mentioning @{self.cfg.manager_username} summarizing what was done, then move card to Done ({self.cfg.list_done}), then unassign yourself from the card.
   Blocker: execute the full Stuck sequence above.
-  Cancel/drop: move card to Dropped ({self.cfg.list_dropped}), explain briefly.
+  Cancel/drop: move card to Dropped ({self.cfg.list_dropped}), explain briefly, mention @{self.cfg.manager_username}.
 
 Do NOT leave the card in Doing after reporting a blocker. Execute all three Stuck actions in sequence.
 Keep comments concise and do not expose API keys, tokens, or internal IDs in manager-facing text.
