@@ -60,6 +60,7 @@ class Config:
     bridge_state_max_bytes: int = 64 * 1024
     bridge_state_ttl_seconds: int = 7 * 24 * 60 * 60
     stale_run_timeout_seconds: int = 60 * 60
+    max_retries: int = 1
 
     @classmethod
     def from_env_file(cls, path: str | Path) -> "Config":
@@ -108,6 +109,7 @@ class Config:
             bridge_state_max_bytes=int(optional("BRIDGE_STATE_MAX_BYTES", "65536")),
             bridge_state_ttl_seconds=int(optional("BRIDGE_STATE_TTL_SECONDS", "604800")),
             stale_run_timeout_seconds=int(optional("STALE_RUN_TIMEOUT_SECONDS", "3600")),
+            max_retries=int(optional("MAX_RETRIES", "1")),
         )
 
 
@@ -279,6 +281,8 @@ class Bridge:
         self._active_workers: dict[str, subprocess.Popen[Any]] = {}
         self._retry_counts: dict[str, int] = {}
         self._run_started_at: dict[str, int] = {}
+        self._run_state_status: dict[str, str] = {}
+        self._run_summaries: dict[str, dict[str, Any]] = {}
         self._log_handles: dict[str, Any] = {}
         self._state_path = Path(self.cfg.project_dir or Path(__file__).parent) / "bridge_state.json"
         self.logger = logging.getLogger("trello-bot")
@@ -323,6 +327,9 @@ class Bridge:
             if isinstance(updated_at, (int, float)) and updated_at + self.cfg.bridge_state_ttl_seconds < time.time():
                 continue
             self._retry_counts[str(card_id_value)] = retry_count
+            status = entry.get("status")
+            if isinstance(status, str):
+                self._run_state_status[str(card_id_value)] = status
 
     def _save_state(self) -> None:
         try:
@@ -330,6 +337,7 @@ class Bridge:
             payload = {
                 card_id_value: {
                     "retry_count": retry_count,
+                    "status": self._run_state_status.get(card_id_value, "idle"),
                     "updated_at": int(time.time()),
                 }
                 for card_id_value, retry_count in self._retry_counts.items()
@@ -404,7 +412,9 @@ class Bridge:
         if self._is_terminal_state(card):
             self.logger.info("worker completed for card %s; current list %s is terminal", card_id_value[:8], card.get("idList"))
             self._retry_counts.pop(card_id_value, None)
+            self._run_state_status.pop(card_id_value, None)
             self._save_state()
+            self._log_run_summary(card_id_value, outcome="terminal", terminal_list=str(card.get("idList", "")))
             return
         started_at = self._run_started_at.pop(card_id_value, None)
         if started_at is not None and int(time.time()) - started_at >= self.cfg.stale_run_timeout_seconds:
@@ -412,14 +422,17 @@ class Bridge:
             self._mark_stale_run(card_id_value)
             return
         retries = self._retry_counts.get(card_id_value, 0)
-        if retries < 1:
+        if retries < self.cfg.max_retries:
             self._retry_counts[card_id_value] = retries + 1
+            self._run_state_status[card_id_value] = "retrying"
             self._save_state()
             self.logger.warning("worker exited without moving card %s to a terminal list; retrying once", card_id_value[:8])
+            self._log_run_summary(card_id_value, outcome="retrying", retry_count=self._retry_counts[card_id_value])
             self.spawn_worker(card_id_value, "retry")
             return
         self.logger.warning("worker exited without moving card %s to a terminal list; no retries remain", card_id_value[:8])
         self._retry_counts.pop(card_id_value, None)
+        self._run_state_status[card_id_value] = "incomplete"
         try:
             self.client.add_comment(
                 card_id_value,
@@ -557,6 +570,14 @@ Keep comments concise and do not expose API keys, tokens, or internal IDs in man
         )
         self._active_workers[card_id_value] = proc
         self._run_started_at[card_id_value] = int(time.time())
+        self._run_state_status[card_id_value] = "running"
+        self._run_summaries[card_id_value] = {
+            "card_id": card_id_value,
+            "trigger": signal,
+            "started_at": self._run_started_at[card_id_value],
+            "retry_count": self._retry_counts.get(card_id_value, 0),
+            "outcome": "running",
+        }
         self._log_handles[card_id_value] = log_handle
         threading.Thread(
             target=self._wait_for_worker,
@@ -598,6 +619,20 @@ Keep comments concise and do not expose API keys, tokens, or internal IDs in man
             except Exception as exc:
                 self.logger.error("failed to post timeout comment for card %s: %s", card_id_value[:8], exc)
             self._mark_stale_run(card_id_value)
+
+    def _log_run_summary(self, card_id_value: str, outcome: str, terminal_list: str = "", retry_count: int = 0) -> None:
+        summary = self._run_summaries.get(card_id_value) or {"card_id": card_id_value, "trigger": "unknown", "started_at": int(time.time())}
+        summary.update({"outcome": outcome, "terminal_list": terminal_list, "retry_count": retry_count})
+        self._run_summaries[card_id_value] = summary
+        self.logger.info(
+            "run summary card=%s trigger=%s started_at=%s outcome=%s terminal_list=%s retry_count=%s",
+            card_id_value[:8],
+            summary.get("trigger", "unknown"),
+            summary.get("started_at", 0),
+            outcome,
+            terminal_list or "",
+            retry_count,
+        )
 
     def _wait_for_worker(self, card_id_value: str, proc: subprocess.Popen[Any]) -> None:
         try:

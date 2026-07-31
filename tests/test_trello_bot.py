@@ -242,10 +242,22 @@ class TrelloBotTests(unittest.TestCase):
         self.assertEqual(len(client.comments), 1)
         self.assertIn("manual review", client.comments[0][1].lower())
 
+    def test_configurable_retry_limit_is_respected(self):
+        cfg = config(max_retries=2)
+        client = FakeTrelloClient({"id": "card", "idList": cfg.list_doing, "desc": "", "labels": []})
+        bridge = trello_bot.Bridge(cfg, client=client)
+
+        with patch.object(bridge, "spawn_worker", return_value=None) as spawn_worker:
+            bridge._handle_worker_exit("card")
+            bridge._handle_worker_exit("card")
+            bridge._handle_worker_exit("card")
+
+        self.assertEqual(spawn_worker.call_count, 2)
+
     def test_bridge_loads_retry_state_from_disk(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             state_path = Path(temp_dir) / "bridge_state.json"
-            state_path.write_text(json.dumps({"card": {"retry_count": 1}}), encoding="utf-8")
+            state_path.write_text(json.dumps({"card": {"retry_count": 1, "status": "running"}}), encoding="utf-8")
             cfg = trello_bot.Config(
                 api_key="key",
                 token="token",
@@ -264,6 +276,7 @@ class TrelloBotTests(unittest.TestCase):
             )
             bridge = trello_bot.Bridge(cfg, client=FakeTrelloClient({"id": "card", "idList": cfg.list_doing, "desc": "", "labels": []}))
             self.assertEqual(bridge._retry_counts.get("card"), 1)
+            self.assertEqual(bridge._run_state_status.get("card"), "running")
 
     def test_bridge_state_file_is_pruned_to_size_limit(self):
         with tempfile.TemporaryDirectory() as temp_dir:
