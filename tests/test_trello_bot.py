@@ -253,6 +253,33 @@ class TrelloBotTests(unittest.TestCase):
             bridge = trello_bot.Bridge(cfg, client=FakeTrelloClient({"id": "card", "idList": cfg.list_doing, "desc": "", "labels": []}))
             self.assertEqual(bridge._retry_counts.get("card"), 1)
 
+    def test_bridge_state_file_is_pruned_to_size_limit(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            cfg = trello_bot.Config(
+                api_key="key",
+                token="token",
+                webhook_secret="secret",
+                callback_url="https://example.test/webhook",
+                board_id="board",
+                agent_member_id="agent-id",
+                agent_username="aishee",
+                manager_member_id="manager-id",
+                manager_username="sayan",
+                list_doing="doing",
+                list_stuck="stuck",
+                list_done="done",
+                list_dropped="dropped",
+                project_dir=temp_dir,
+                bridge_state_max_bytes=80,
+            )
+            bridge = trello_bot.Bridge(cfg, client=FakeTrelloClient({"id": "card", "idList": cfg.list_doing, "desc": "", "labels": []}))
+            bridge._retry_counts = {f"card-{index}": 1 for index in range(10)}
+            bridge._save_state()
+
+            state_path = Path(temp_dir) / "bridge_state.json"
+            self.assertTrue(state_path.exists())
+            self.assertLessEqual(state_path.stat().st_size, cfg.bridge_state_max_bytes)
+
 
 if __name__ == "__main__":
     unittest.main()

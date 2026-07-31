@@ -57,6 +57,7 @@ class Config:
     worker_log_retention_days: int = 14
     worker_log_max_files: int = 50
     worker_log_max_size_bytes: int = 10 * 1024 * 1024
+    bridge_state_max_bytes: int = 64 * 1024
 
     @classmethod
     def from_env_file(cls, path: str | Path) -> "Config":
@@ -316,7 +317,19 @@ class Bridge:
         try:
             self._state_path.parent.mkdir(parents=True, exist_ok=True)
             payload = {card_id_value: {"retry_count": retry_count} for card_id_value, retry_count in self._retry_counts.items()}
-            self._state_path.write_text(json.dumps(payload, indent=2, sort_keys=True), encoding="utf-8")
+            payload = dict(sorted(payload.items(), key=lambda item: item[0]))
+            content = json.dumps(payload, indent=2, sort_keys=True)
+            if len(content.encode("utf-8")) > self.cfg.bridge_state_max_bytes:
+                limited_payload = {}
+                for card_id_value, entry in list(payload.items()):
+                    limited_payload[card_id_value] = entry
+                    candidate = json.dumps(limited_payload, indent=2, sort_keys=True)
+                    if len(candidate.encode("utf-8")) > self.cfg.bridge_state_max_bytes:
+                        limited_payload.pop(card_id_value)
+                        break
+                payload = limited_payload
+                content = json.dumps(payload, indent=2, sort_keys=True)
+            self._state_path.write_text(content, encoding="utf-8")
         except OSError as exc:
             self.logger.warning("failed to persist bridge state to %s: %s", self._state_path, exc)
 
