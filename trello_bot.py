@@ -296,7 +296,6 @@ class Bridge:
     def _already_picked_up(self, card: dict[str, Any]) -> bool:
         normalized_pickups = {
             normalize_pickup_text(f"Picked up by @{self.cfg.agent_username}. I'll work this and report back here."),
-            normalize_pickup_text(f"Picked up by @{self.cfg.agent_username}. I’ll work this and report back here."),
         }
         for comment in card.get("comments") or []:
             text = normalize_pickup_text(str(comment.get("data", {}).get("text") or comment.get("text") or ""))
