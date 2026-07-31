@@ -362,9 +362,12 @@ class Bridge:
     def _mark_stale_run(self, card_id_value: str) -> None:
         self.logger.warning("marking card %s as stale for manual review", card_id_value[:8])
         try:
+            card = self.client.get_card(card_id_value, 0)
+            card_name = card.get("name", card_id_value)
+            current_list = card.get("idList", "")
             self.client.add_comment(
                 card_id_value,
-                "The worker run became stale and the card needs manual review.",
+                f"The worker run for \"{card_name}\" became stale and needs manual review (card is in {current_list}).",
             )
         except Exception as exc:
             self.logger.error("failed to comment on stale run for card %s: %s", card_id_value[:8], exc)
@@ -434,10 +437,12 @@ class Bridge:
         self.logger.warning("worker exited without moving card %s to a terminal list; no retries remain", card_id_value[:8])
         self._retry_counts.pop(card_id_value, None)
         self._run_state_status[card_id_value] = "incomplete"
+        card_name = card.get("name", card_id_value)
+        card_list = card.get("idList", "?")
         try:
             self.client.add_comment(
                 card_id_value,
-                "Worker exited before the card reached a terminal state. The card did not reach a terminal state; please review it manually.",
+                f"Worker exited before \"{card_name}\" reached a terminal state. The card is in {card_list} but did not move to Done, Stuck, or Dropped. Please review it manually.",
             )
         except Exception as exc:
             self.logger.error("failed to comment on incomplete run for card %s: %s", card_id_value[:8], exc)
@@ -613,9 +618,11 @@ Keep comments concise and do not expose API keys, tokens, or internal IDs in man
                 proc.wait()
             # Post a timeout comment on the card so the manager knows what happened
             try:
+                card = self.client.get_card(card_id_value, 0)
+                card_name = card.get("name", card_id_value)
                 self.client.add_comment(
                     card_id_value,
-                    f"Worker timed out after {self.cfg.worker_timeout_seconds}s — card left in its current state. Please pick up manually if needed.",
+                    f"Worker timed out after {self.cfg.worker_timeout_seconds}s on \"{card_name}\". The card is in its current state and needs manual review.",
                 )
             except Exception as exc:
                 self.logger.error("failed to post timeout comment for card %s: %s", card_id_value[:8], exc)
