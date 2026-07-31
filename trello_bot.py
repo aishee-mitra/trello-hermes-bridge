@@ -367,7 +367,7 @@ class Bridge:
             current_list = card.get("idList", "")
             self.client.add_comment(
                 card_id_value,
-                f"The worker run on \"{card_name}\" became stale and needs manual review.",
+                f"The worker run on \"{card_name}\" became stale and needs manual review. @{self.cfg.manager_username} can you take a look when you have a moment?",
             )
         except Exception as exc:
             self.logger.error("failed to comment on stale run for card %s: %s", card_id_value[:8], exc)
@@ -442,7 +442,7 @@ class Bridge:
         try:
             self.client.add_comment(
                 card_id_value,
-                f"Worker exited before \"{card_name}\" reached a terminal state. Please review it manually.",
+                f"Worker exited before \"{card_name}\" reached a terminal state. @{self.cfg.manager_username} please review when you can.",
             )
         except Exception as exc:
             self.logger.error("failed to comment on incomplete run for card %s: %s", card_id_value[:8], exc)
