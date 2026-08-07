@@ -1,4 +1,6 @@
 config.env
+bridge_state.json
+workers/
 *.log
 __pycache__/
 .pytest_cache/
