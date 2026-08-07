@@ -177,6 +177,29 @@ class TrelloBotTests(unittest.TestCase):
         self.assertEqual(trello_bot.is_agent_trigger(agent_self_mention, cfg), (False, "other"))
         self.assertTrue(trello_bot.is_agent_authored_comment(agent_self_mention, cfg))
 
+    def test_cancel_keywords_match_common_manager_phrases(self):
+        cfg = config()
+        bridge = trello_bot.Bridge(cfg)
+        cases = [
+            "cancel it",
+            "cancel this",
+            "cancel this task",
+            "cancel the task",
+            "drop it",
+            "drop this",
+            "drop this task",
+            "drop the task",
+            "stop this",
+            "stop this task",
+            "stop the task",
+            "abort",
+            "disregard",
+        ]
+        for phrase in cases:
+            with self.subTest(phrase=phrase):
+                action = {"type": "commentCard", "data": {"card": {"id": "card"}, "text": phrase}}
+                self.assertTrue(bridge._cancel_keywords(action))
+
     def test_model_label_parsing_edge_cases(self):
         cases = [
             ("model:openrouter:anthropic/claude-3.5-sonnet", "openrouter", "anthropic/claude-3.5-sonnet"),
@@ -208,6 +231,17 @@ class TrelloBotTests(unittest.TestCase):
 
         self.assertIsNone(result)
         popen.assert_not_called()
+
+    def test_spawn_worker_allows_cards_in_stuck_list_to_be_retriggered(self):
+        cfg = config()
+        client = FakeTrelloClient({"id": "card", "idList": cfg.list_stuck, "desc": "", "labels": []})
+        bridge = trello_bot.Bridge(cfg, client=client)
+
+        with patch("trello_bot.subprocess.Popen") as popen:
+            result = bridge.spawn_worker("card", "mentioned")
+
+        self.assertIsNotNone(result)
+        popen.assert_called_once()
 
     def test_wait_for_worker_comments_when_card_stays_in_doing(self):
         cfg = config()

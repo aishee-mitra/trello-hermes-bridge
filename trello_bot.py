@@ -291,7 +291,23 @@ class Bridge:
 
     def _cancel_keywords(self, action: dict[str, Any]) -> bool:
         text = (comment_text(action) or "").lower()
-        return any(token in text for token in ("cancel this", "drop this", "abort", "stop this", "disregard"))
+        tokens = (
+            "cancel this",
+            "cancel this task",
+            "cancel the task",
+            "cancel it",
+            "drop this",
+            "drop this task",
+            "drop the task",
+            "drop it",
+            "abort",
+            "stop this",
+            "stop this task",
+            "stop the task",
+            "stop it",
+            "disregard",
+        )
+        return any(token in text for token in tokens)
 
     def _already_picked_up(self, card: dict[str, Any]) -> bool:
         normalized_pickups = {
@@ -304,10 +320,16 @@ class Bridge:
         return False
 
     def _terminal_list_ids(self) -> set[str]:
+        return {self.cfg.list_done, self.cfg.list_dropped}
+
+    def _completed_list_ids(self) -> set[str]:
         return {self.cfg.list_stuck, self.cfg.list_done, self.cfg.list_dropped}
 
     def _is_terminal_state(self, card: dict[str, Any]) -> bool:
         return str(card.get("idList", "")) in self._terminal_list_ids()
+
+    def _is_completed_state(self, card: dict[str, Any]) -> bool:
+        return str(card.get("idList", "")) in self._completed_list_ids()
 
     def _load_state(self) -> None:
         if not self._state_path.exists():
@@ -412,7 +434,7 @@ class Bridge:
         except Exception as exc:
             self.logger.error("could not inspect card %s after worker exit: %s", card_id_value[:8], exc)
             return
-        if self._is_terminal_state(card):
+        if self._is_completed_state(card):
             self.logger.info("worker completed for card %s; current list %s is terminal", card_id_value[:8], card.get("idList"))
             self._retry_counts.pop(card_id_value, None)
             self._run_state_status.pop(card_id_value, None)
@@ -548,7 +570,7 @@ Mandatory transition rules — these are hard constraints, not suggestions:
 |- After completing any work (success, blocker, or cancel), your FINAL action must be one of these terminal sequences. No text-only response is a valid end state.
   Success: post one completion comment mentioning @{self.cfg.manager_username} summarizing what was done, then move card to Done ({self.cfg.list_done}), then unassign yourself from the card.
   Blocker: execute the full Stuck sequence above.
-  Cancel/drop: move card to Dropped ({self.cfg.list_dropped}), explain briefly, mention @{self.cfg.manager_username}.
+  Cancel/drop: move card to Dropped ({self.cfg.list_dropped}), explain briefly, mention @{self.cfg.manager_username}. Then unassign yourself from the card.
 
 Do NOT leave the card in Doing after reporting a blocker. Execute all three Stuck actions in sequence.
 Keep comments concise and do not expose API keys, tokens, or internal IDs in manager-facing text.
