@@ -311,7 +311,7 @@ class Bridge:
 
     def _already_picked_up(self, card: dict[str, Any]) -> bool:
         normalized_pickups = {
-            normalize_pickup_text(f"FYI: Picked up by @{self.cfg.agent_username}. I'll work this and report back here."),
+            normalize_pickup_text(f"**FYI** Picked up by @{self.cfg.agent_username}. I'll work this and report back here."),
         }
         for comment in card.get("comments") or []:
             text = normalize_pickup_text(str(comment.get("data", {}).get("text") or comment.get("text") or ""))
@@ -388,7 +388,7 @@ class Bridge:
             current_list = card.get("idList", "")
             self.client.add_comment(
                 card_id_value,
-                f"FYA: The worker run on \"{card_name}\" became stale and needs manual review. @{self.cfg.manager_username} can you take a look when you have a moment?"
+                f"**FYA** The worker run on \"{card_name}\" became stale and needs manual review. @{self.cfg.manager_username} can you take a look when you have a moment?"
             )
         except Exception as exc:
             self.logger.error("failed to comment on stale run for card %s: %s", card_id_value[:8], exc)
@@ -463,7 +463,7 @@ class Bridge:
         try:
             self.client.add_comment(
                 card_id_value,
-                f"FYA: Worker exited before \"{card_name}\" reached a terminal state. @{self.cfg.manager_username} please review when you can.",
+                f"**FYA** Worker exited before \"{card_name}\" reached a terminal state. @{self.cfg.manager_username} please review when you can.",
             )
         except Exception as exc:
             self.logger.error("failed to comment on incomplete run for card %s: %s", card_id_value[:8], exc)
@@ -643,7 +643,7 @@ Keep comments concise and do not expose API keys, tokens, or internal IDs in man
                 card_name = card.get("name", card_id_value)
                 self.client.add_comment(
                     card_id_value,
-                    f"FYA: Worker timed out after {self.cfg.worker_timeout_seconds}s on \"{card_name}\". @{self.cfg.manager_username} please review manually.",
+                    f"**FYA** Worker timed out after {self.cfg.worker_timeout_seconds}s on \"{card_name}\". @{self.cfg.manager_username} please review manually.",
                 )
             except Exception as exc:
                 self.logger.error("failed to post timeout comment for card %s: %s", card_id_value[:8], exc)
