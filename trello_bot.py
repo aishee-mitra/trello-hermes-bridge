@@ -273,6 +273,9 @@ class TrelloClient:
     def assign_member(self, card_id_value: str, member_id: str) -> Any:
         return self.request("POST", f"/cards/{quote(card_id_value)}/idMembers", {"value": member_id})
 
+    def unassign_member(self, card_id_value: str, member_id: str) -> Any:
+        return self.request("DELETE", f"/cards/{quote(card_id_value)}/idMembers/{quote(member_id)}")
+
 
 class Bridge:
     def __init__(self, cfg: Config, client: TrelloClient | None = None):
@@ -311,7 +314,7 @@ class Bridge:
 
     def _already_picked_up(self, card: dict[str, Any]) -> bool:
         normalized_pickups = {
-            normalize_pickup_text(f"**FYI** Picked up by @{self.cfg.agent_username}. I'll work this and report back here."),
+            normalize_pickup_text(f"FYI Picked up by @{self.cfg.agent_username}. I'll work this and report back here."),
         }
         for comment in card.get("comments") or []:
             text = normalize_pickup_text(str(comment.get("data", {}).get("text") or comment.get("text") or ""))
@@ -388,7 +391,7 @@ class Bridge:
             current_list = card.get("idList", "")
             self.client.add_comment(
                 card_id_value,
-                f"**FYA** The worker run on \"{card_name}\" became stale and needs manual review. @{self.cfg.manager_username} can you take a look when you have a moment?"
+                f"FYA The worker run on \"{card_name}\" became stale and needs manual review. @{self.cfg.manager_username} can you take a look when you have a moment?"
             )
         except Exception as exc:
             self.logger.error("failed to comment on stale run for card %s: %s", card_id_value[:8], exc)
@@ -463,7 +466,7 @@ class Bridge:
         try:
             self.client.add_comment(
                 card_id_value,
-                f"**FYA** Worker exited before \"{card_name}\" reached a terminal state. @{self.cfg.manager_username} please review when you can.",
+                f"FYA Worker exited before \"{card_name}\" reached a terminal state. @{self.cfg.manager_username} please review when you can.",
             )
         except Exception as exc:
             self.logger.error("failed to comment on incomplete run for card %s: %s", card_id_value[:8], exc)
@@ -643,7 +646,7 @@ Keep comments concise and do not expose API keys, tokens, or internal IDs in man
                 card_name = card.get("name", card_id_value)
                 self.client.add_comment(
                     card_id_value,
-                    f"**FYA** Worker timed out after {self.cfg.worker_timeout_seconds}s on \"{card_name}\". @{self.cfg.manager_username} please review manually.",
+                    f"FYA Worker timed out after {self.cfg.worker_timeout_seconds}s on \"{card_name}\". @{self.cfg.manager_username} please review manually.",
                 )
             except Exception as exc:
                 self.logger.error("failed to post timeout comment for card %s: %s", card_id_value[:8], exc)
@@ -765,7 +768,7 @@ def run_server(cfg: Config) -> None:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="Trello -> Hermes bridge")
-    parser.add_argument("command", nargs="?", default="serve", choices=("serve", "comment", "move", "assign", "get-card"))
+    parser.add_argument("command", nargs="?", default="serve", choices=("serve", "comment", "move", "assign", "unassign", "get-card"))
     parser.add_argument("card_id", nargs="?")
     parser.add_argument("value", nargs="?")
     parser.add_argument("--config", default=None, help="path to config.env")
@@ -792,6 +795,10 @@ def main() -> int:
         if not args.value:
             parser.error("assign requires MEMBER_ID")
         client.assign_member(args.card_id, args.value)
+    elif args.command == "unassign":
+        if not args.value:
+            parser.error("unassign requires MEMBER_ID")
+        client.unassign_member(args.card_id, args.value)
     elif args.command == "get-card":
         max_comments = int(args.value) if args.value else 20
         card = client.get_card(args.card_id, max_comments)

@@ -146,7 +146,7 @@ class TrelloBotTests(unittest.TestCase):
         card = {
             "id": "card",
             "comments": [
-                {"data": {"text": "FYI: Picked up by @aishee. I'll work this and report back here."}},
+                {"data": {"text": "FYI Picked up by @aishee. I'll work this and report back here."}},
             ],
         }
         self.assertTrue(bridge._already_picked_up(card))
@@ -154,7 +154,7 @@ class TrelloBotTests(unittest.TestCase):
         card = {
             "id": "card",
             "comments": [
-                {"data": {"text": "FYI: Picked up by @aishee. I'll work this and report back here."}},
+                {"data": {"text": "FYI Picked up by @aishee. I'll work this and report back here."}},
                 {"data": {"text": "Some other comment"}},
             ],
         }

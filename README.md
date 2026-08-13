@@ -149,19 +149,14 @@ If no model label is present, the worker uses the default model from `HERMES_MOD
 || Blocked | Worker comments + mentions manager + moves to **Stuck** |
 || Cancelled | Worker comments briefly + moves to **Dropped** |
 
-### Comment Tags for Clarity
+### Comment Tags
 
-Auto-posted comments include tags for quick scanning:
-
-- **FYI** (For Your Information) — Status-only comments (picked up, completed, cancelled). No action required.
-- **FYA** (For Your Action) — Comments requiring manager action (stale worker, timeout, crash). Manager should review.
+Bridge comments are plain text and do not use Trello markdown tags.
 
 **Examples:**
-- `FYI: Picked up by @agent. I'll work this and report back here.`
-- `FYA: The worker run became stale and needs manual review. @manager can you take a look when you have a moment?`
-- `FYA: Worker timed out after 120s. @manager please review manually.`
-
-This makes Trello comments more scannable and professional without markdown heading side-effects.
+- `FYI Picked up by @agent. I'll work this and report back here.`
+- `FYA The worker run became stale and needs manual review. @manager can you take a look when you have a moment?`
+- `FYA Worker timed out after 120s. @manager please review manually.`
 
 ---
 
