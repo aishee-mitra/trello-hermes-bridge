@@ -17,14 +17,15 @@ Turn explicit Trello work allocation into a **detached Hermes Agent run** — no
 
 - ✅ **Fire-and-forget** — webhook acknowledges immediately; Hermes runs in the background
 - 🔒 **HMAC-SHA1 signature verification** — only valid Trello webhooks are accepted
-- 🎯 **Explicit triggers only** — assignment or `@ai`/`@trello-username` mention only
+- 🎯 **Explicit triggers only** — assignment or `@agent-username` mention only
 - 🧠 **Async worker spawning** — detached Hermes worker gets full card context
 - 📋 **Lifecycle management** — `Todo` → `Doing` → `Stuck` → `Done` → `Dropped`
 - 🔁 **Deduplication** — same card/trigger ignored within a configurable window
-- 🌐 **Cloudflare-tunnel friendly** — binds to configurable `BIND_HOST:<port>`
+- 🌐 **Tunnel friendly** — binds to configurable `BIND_HOST:<port>`; works with Cloudflare Tunnel, ngrok, Tailscale Funnel, etc.
 - 🏷️ **Per-task model override** — use labels like `model:provider/model-name` to override the default model for a specific card
 - 📦 **Zero external dependencies** — stdlib only
 - 🚀 **systemd user service** — auto-start + linger
+- 🗂️ **Multi-board** — one service can serve multiple Trello boards
 
 ---
 
@@ -48,7 +49,7 @@ systemctl --user enable --now trello-bot
 systemctl --user status trello-bot
 ```
 
-Expose the bridge with a tunnel on `BIND_HOST:BIND_PORT`, register a Trello board webhook to `https://<host>/webhook`, and you’re live.
+Expose the bridge with a tunnel on `BIND_HOST:BIND_PORT`, register Trello board webhook(s) to `https://<host>/webhook`, and you’re live.
 
 ## 🛠️ Automated Install (For Hermes Agents)
 
@@ -69,13 +70,49 @@ That guide walks you through:
 ## 🛠️ Interactive Human Install
 
 If you're following this manually:
-
 - Clone the repo, copy `config.env.example` to `config.env`
 - Fill in your Trello API credentials and member IDs (see Configuration section below)
 - Install as a systemd user service (see Quick Start above)
-- Expose via tunnel and register the Trello webhook
+- Expose via tunnel and register Trello webhook(s)
 
 ---
+
+## 🗂️ Multi-Board Setup
+
+The bridge can serve multiple Trello boards from one process.
+
+### Legacy single-board mode
+
+```env
+TRELLO_BOARD_ID=<board-id>
+LIST_ID_DOING=<doing-list-id>
+LIST_ID_STUCK=<stuck-list-id>
+LIST_ID_DONE=<done-list-id>
+LIST_ID_DROPPED=<dropped-list-id>
+```
+
+### Multi-board mode
+
+Add numbered board blocks. Any numbers work; they do not need to be sequential.
+
+```env
+BOARD2_BOARD_ID=<second-board-id>
+BOARD2_LIST_ID_DOING=<doing-list-id>
+BOARD2_LIST_ID_STUCK=<stuck-list-id>
+BOARD2_LIST_ID_DONE=<done-list-id>
+BOARD2_LIST_ID_DROPPED=<dropped-list-id>
+
+BOARD5_BOARD_ID=<fifth-board-id>
+BOARD5_LIST_ID_DOING=<doing-list-id>
+BOARD5_LIST_ID_STUCK=<stuck-list-id>
+BOARD5_LIST_ID_DONE=<done-list-id>
+BOARD5_LIST_ID_DROPPED=<dropped-list-id>
+```
+
+Rules:
+- Keep one `TRELLO_CALLBACK_URL`; register each board’s webhook to the same `https://<host>/webhook`.
+- Identities (`AGENT_TRELLO_MEMBER_ID`, `MANAGER_TRELLO_MEMBER_ID`, etc.) are shared across boards.
+- State and worker logs are scoped per board automatically.
 
 ## 🔧 Configuration
 
@@ -85,12 +122,14 @@ If you're following this manually:
 | `TRELLO_TOKEN` | Your Trello user token |
 | `TRELLO_WEBHOOK_SECRET` | Trello application secret for HMAC-SHA1 |
 | `TRELLO_CALLBACK_URL` | Public callback URL, exact match incl. `/webhook` |
-| `TRELLO_BOARD_ID` | Target Trello board ID |
+| `TRELLO_BOARD_ID` | Target Trello board ID (legacy single-board mode) |
+| `BOARD<n>_BOARD_ID` | Additional board IDs (`BOARD2_`, `BOARD3_`, …) |
+| `BOARD<n>_LIST_ID_DOING/STUCK/DONE/DROPPED` | Per-board lifecycle list IDs |
 | `AGENT_TRELLO_MEMBER_ID` | Member ID of the agent to trigger on |
 | `AGENT_TRELLO_USERNAME` | Agent username for mentions |
 | `MANAGER_TRELLO_MEMBER_ID` | Manager member ID |
 | `MANAGER_TRELLO_USERNAME` | Manager username for mentions |
-| `LIST_ID_DOING/STUCK/DONE/DROPPED` | Lifecycle list IDs |
+| `LIST_ID_DOING/STUCK/DONE/DROPPED` | Lifecycle list IDs (legacy single-board mode) |
 | `BIND_HOST` | Bind address, defaults to `0.0.0.0` |
 | `BIND_PORT` | Bind port, defaults to `8787` |
 
@@ -101,19 +140,19 @@ All identities are configurable. No hardcoded usernames, member IDs, board IDs, 
 ## 🏗️ Architecture
 
 ```text
-Trello Board
-    │
-    │  webhook (HMAC-SHA1)
-    ▼
-trello_bot.py ──► /webhook
-    │
-    │  verify, filter, dedup, enrich card
-    ▼
-Hermes worker (detached)
-    │
-    │  uses local CLI for write-back
-    ▼
-Trello card + lists
+Trello Board A ──┐
+                │
+Trello Board B ─┤── webhook (HMAC-SHA1) ──► /webhook
+                │                              │
+Trello Board N ─┘                              ▼
+                                    verify, filter, dedup
+                                    route to matching board config
+                                             │
+                                             ▼
+                                   Hermes worker (detached)
+                                             │
+                                             ▼
+                                   Trello card + lists
 ```
 
 ### Trigger rules

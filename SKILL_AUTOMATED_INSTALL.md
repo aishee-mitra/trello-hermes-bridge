@@ -249,6 +249,17 @@ HERMES_BIN=$(which hermes)  # Auto-detect, or set manually to /path/to/hermes
 HERMES_MODEL=openrouter:tencent/hy3:free  # or your preferred model
 ```
 
+**Optional multi-board config:**
+
+```env
+# Second board
+BOARD2_BOARD_ID=<board-id>
+BOARD2_LIST_ID_DOING=<doing-list-id>
+BOARD2_LIST_ID_STUCK=<stuck-list-id>
+BOARD2_LIST_ID_DONE=<done-list-id>
+BOARD2_LIST_ID_DROPPED=<dropped-list-id>
+```
+
 **Important config.env Format Rules:**
 - ✅ Each line: `KEY=VALUE` (no spaces around `=`)
 - ❌ No comments (no `#` characters)
