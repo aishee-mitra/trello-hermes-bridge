@@ -19,6 +19,7 @@ Use this skill when installing or verifying the trello-bot full stack for a new 
    - Trello: `TRELLO_API_KEY`, `TRELLO_TOKEN`, `TRELLO_WEBHOOK_SECRET`
    - Callback: `TRELLO_CALLBACK_URL=https://<host>/webhook`
    - Board: `TRELLO_BOARD_ID`
+   - Optional additional boards: `BOARD<n>_BOARD_ID`, `BOARD<n>_LIST_ID_DOING/STUCK/DONE/DROPPED`
    - Identities: `AGENT_TRELLO_MEMBER_ID`, `AGENT_TRELLO_USERNAME`, `MANAGER_TRELLO_MEMBER_ID`, `MANAGER_TRELLO_USERNAME`
    - Lists: `LIST_ID_DOING`, `LIST_ID_STUCK`, `LIST_ID_DONE`, `LIST_ID_DROPPED`
    - Runtime: `HERMES_BIN`, `HERMES_MODEL` (optional), `PROJECT_DIR`, `DEDUP_WINDOW_SECONDS`, `MAX_CARD_COMMENTS`
@@ -33,10 +34,11 @@ Use this skill when installing or verifying the trello-bot full stack for a new 
 5. Verify listening address/port from logs:
    - `journalctl --user -u trello-bot --no-pager -n 20`
 
-6. Tunnel + webhook:
+6. Tunnel + webhook(s):
    - Expose `BIND_HOST:BIND_PORT` via Cloudflare Tunnel or equivalent
-   - Register Trello board webhook to `https://<public-host>/webhook`
+   - Register Trello board webhook(s) to `https://<public-host>/webhook`
    - Use `TRELLO_WEBHOOK_SECRET` for HMAC-SHA1 verification
+   - For multiple boards, register one webhook per board using the same callback URL
 
 7. Optional per-model labels: use Trello label `model:<provider>:<model-id>`, e.g. `model:openrouter:tencent/hy3:free`.
 
