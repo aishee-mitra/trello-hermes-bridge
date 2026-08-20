@@ -290,7 +290,8 @@ class TrelloBotTests(unittest.TestCase):
 
     def test_bridge_loads_retry_state_from_disk(self):
         with tempfile.TemporaryDirectory() as temp_dir:
-            state_path = Path(temp_dir) / "bridge_state.json"
+            state_path = Path(temp_dir) / "states" / "board.json"
+            state_path.parent.mkdir(parents=True, exist_ok=True)
             state_path.write_text(json.dumps({"card": {"retry_count": 1, "status": "running"}}), encoding="utf-8")
             cfg = trello_bot.Config(
                 api_key="key",
@@ -308,7 +309,14 @@ class TrelloBotTests(unittest.TestCase):
                 list_dropped="dropped",
                 project_dir=temp_dir,
             )
-            bridge = trello_bot.Bridge(cfg, client=FakeTrelloClient({"id": "card", "idList": cfg.list_doing, "desc": "", "labels": []}))
+            board_config = trello_bot.BoardConfig(
+                board_id="board",
+                list_doing="doing",
+                list_stuck="stuck",
+                list_done="done",
+                list_dropped="dropped",
+            )
+            bridge = trello_bot.Bridge(cfg, board_config=board_config, client=FakeTrelloClient({"id": "card", "idList": cfg.list_doing, "desc": "", "labels": []}))
             self.assertEqual(bridge._retry_counts.get("card"), 1)
             self.assertEqual(bridge._run_state_status.get("card"), "running")
 
@@ -331,11 +339,18 @@ class TrelloBotTests(unittest.TestCase):
                 project_dir=temp_dir,
                 bridge_state_max_bytes=80,
             )
-            bridge = trello_bot.Bridge(cfg, client=FakeTrelloClient({"id": "card", "idList": cfg.list_doing, "desc": "", "labels": []}))
+            board_config = trello_bot.BoardConfig(
+                board_id="board",
+                list_doing="doing",
+                list_stuck="stuck",
+                list_done="done",
+                list_dropped="dropped",
+            )
+            bridge = trello_bot.Bridge(cfg, board_config=board_config, client=FakeTrelloClient({"id": "card", "idList": cfg.list_doing, "desc": "", "labels": []}))
             bridge._retry_counts = {f"card-{index}": 1 for index in range(10)}
             bridge._save_state()
 
-            state_path = Path(temp_dir) / "bridge_state.json"
+            state_path = Path(temp_dir) / "states" / "board.json"
             self.assertTrue(state_path.exists())
             self.assertLessEqual(state_path.stat().st_size, cfg.bridge_state_max_bytes)
 

@@ -33,20 +33,46 @@ from urllib.request import Request, urlopen
 
 
 @dataclass(frozen=True)
+class BoardConfig:
+    board_id: str
+    list_doing: str
+    list_stuck: str
+    list_done: str
+    list_dropped: str
+
+    @classmethod
+    def from_env_values(cls, prefix: str, values: dict[str, str]) -> "BoardConfig":
+        def required(name: str) -> str:
+            value = values.get(name, "").strip()
+            if not value or value.startswith("REPLACE_WITH_"):
+                raise ValueError(f"missing required board configuration: {name}")
+            return value
+
+        return cls(
+            board_id=required(f"{prefix}_BOARD_ID"),
+            list_doing=required(f"{prefix}_LIST_ID_DOING"),
+            list_stuck=required(f"{prefix}_LIST_ID_STUCK"),
+            list_done=required(f"{prefix}_LIST_ID_DONE"),
+            list_dropped=required(f"{prefix}_LIST_ID_DROPPED"),
+        )
+
+
+@dataclass(frozen=True)
 class Config:
     api_key: str
     token: str
     webhook_secret: str
     callback_url: str
-    board_id: str
-    agent_member_id: str
-    agent_username: str
-    manager_member_id: str
-    manager_username: str
-    list_doing: str
-    list_stuck: str
-    list_done: str
-    list_dropped: str
+    board_id: str = ""
+    boards: tuple[BoardConfig, ...] = ()
+    agent_member_id: str = ""
+    agent_username: str = ""
+    manager_member_id: str = ""
+    manager_username: str = ""
+    list_doing: str = ""
+    list_stuck: str = ""
+    list_done: str = ""
+    list_dropped: str = ""
     bind_host: str = "0.0.0.0"
     bind_port: int = 8787
     hermes_bin: str = "/usr/local/bin/hermes"  # Override via HERMES_BIN env var
@@ -62,6 +88,26 @@ class Config:
     bridge_state_ttl_seconds: int = 7 * 24 * 60 * 60
     stale_run_timeout_seconds: int = 60 * 60
     max_retries: int = 1
+
+    @property
+    def effective_board_id(self) -> str:
+        return self.board_id or (self.boards[0].board_id if self.boards else "")
+
+    @property
+    def effective_list_doing(self) -> str:
+        return self.list_doing or (self.boards[0].list_doing if self.boards else "")
+
+    @property
+    def effective_list_stuck(self) -> str:
+        return self.list_stuck or (self.boards[0].list_stuck if self.boards else "")
+
+    @property
+    def effective_list_done(self) -> str:
+        return self.list_done or (self.boards[0].list_done if self.boards else "")
+
+    @property
+    def effective_list_dropped(self) -> str:
+        return self.list_dropped or (self.boards[0].list_dropped if self.boards else "")
 
     @classmethod
     def from_env_file(cls, path: str | Path) -> "Config":
@@ -83,20 +129,69 @@ class Config:
         def optional(name: str, default: str) -> str:
             return values.get(name, default).strip()
 
+        boards: list[BoardConfig] = []
+        board_keys = [key for key in values if key.startswith("BOARD_") or key.startswith("TRELLO_BOARD_ID=")]
+        if "TRELLO_BOARD_ID" in values:
+            boards.append(
+                BoardConfig(
+                    board_id=required("TRELLO_BOARD_ID"),
+                    list_doing=required("LIST_ID_DOING"),
+                    list_stuck=required("LIST_ID_STUCK"),
+                    list_done=required("LIST_ID_DONE"),
+                    list_dropped=required("LIST_ID_DROPPED"),
+                )
+            )
+        prefix = "BOARD1_"
+        index = 1
+        while f"{prefix}BOARD_ID" in values:
+            boards.append(BoardConfig.from_env_values(prefix, values))
+            index += 1
+            prefix = f"BOARD{index}_"
+
+        if not boards:
+            raise ValueError("missing board configuration: define TRELLO_BOARD_ID or BOARD<n>_BOARD_ID")
+        if len(boards) == 1:
+            board = boards[0]
+            return cls(
+                api_key=required("TRELLO_API_KEY"),
+                token=required("TRELLO_TOKEN"),
+                webhook_secret=required("TRELLO_WEBHOOK_SECRET"),
+                callback_url=required("TRELLO_CALLBACK_URL"),
+                board_id=board.board_id,
+                agent_member_id=required("AGENT_TRELLO_MEMBER_ID"),
+                agent_username=required("AGENT_TRELLO_USERNAME"),
+                manager_member_id=required("MANAGER_TRELLO_MEMBER_ID"),
+                manager_username=required("MANAGER_TRELLO_USERNAME"),
+                list_doing=board.list_doing,
+                list_stuck=board.list_stuck,
+                list_done=board.list_done,
+                list_dropped=board.list_dropped,
+                bind_host=optional("BIND_HOST", "0.0.0.0"),
+                bind_port=int(optional("BIND_PORT", "8787")),
+                hermes_bin=optional("HERMES_BIN", "/usr/local/bin/hermes"),
+                hermes_model=optional("HERMES_MODEL", ""),
+                project_dir=optional("PROJECT_DIR", str(Path(__file__).parent)),
+                dedup_window_seconds=int(optional("DEDUP_WINDOW_SECONDS", "300")),
+                worker_timeout_seconds=int(optional("WORKER_TIMEOUT_SECONDS", "900")),
+                worker_log_retention_days=int(optional("WORKER_LOG_RETENTION_DAYS", "14")),
+                worker_log_max_files=int(optional("WORKER_LOG_MAX_FILES", "50")),
+                worker_log_max_size_bytes=int(optional("WORKER_LOG_MAX_SIZE_BYTES", str(10 * 1024 * 1024))),
+                bridge_state_max_bytes=int(optional("BRIDGE_STATE_MAX_BYTES", "65536")),
+                bridge_state_ttl_seconds=int(optional("BRIDGE_STATE_TTL_SECONDS", "604800")),
+                stale_run_timeout_seconds=int(optional("STALE_RUN_TIMEOUT_SECONDS", "3600")),
+                max_retries=int(optional("MAX_RETRIES", "1")),
+            )
+
         return cls(
             api_key=required("TRELLO_API_KEY"),
             token=required("TRELLO_TOKEN"),
             webhook_secret=required("TRELLO_WEBHOOK_SECRET"),
             callback_url=required("TRELLO_CALLBACK_URL"),
-            board_id=required("TRELLO_BOARD_ID"),
+            boards=tuple(boards),
             agent_member_id=required("AGENT_TRELLO_MEMBER_ID"),
             agent_username=required("AGENT_TRELLO_USERNAME"),
             manager_member_id=required("MANAGER_TRELLO_MEMBER_ID"),
             manager_username=required("MANAGER_TRELLO_USERNAME"),
-            list_doing=required("LIST_ID_DOING"),
-            list_stuck=required("LIST_ID_STUCK"),
-            list_done=required("LIST_ID_DONE"),
-            list_dropped=required("LIST_ID_DROPPED"),
             bind_host=optional("BIND_HOST", "0.0.0.0"),
             bind_port=int(optional("BIND_PORT", "8787")),
             hermes_bin=optional("HERMES_BIN", "/usr/local/bin/hermes"),
@@ -174,12 +269,15 @@ def normalize_pickup_text(text: str) -> str:
 
 def is_agent_trigger(action: dict[str, Any], cfg: Config) -> tuple[bool, str]:
     """Return whether an action is an explicit assignment or mention trigger."""
-    # Agent-authored comments should never trigger - checked before this function, but double-check
-    if action_type(action) == "commentCard" and is_agent_authored_comment(action, cfg):
-        return False, "other"
-    
     payload_board_id = board_id(action)
-    if payload_board_id and payload_board_id != cfg.board_id:
+    if payload_board_id:
+        known_board_ids = {board.board_id for board in getattr(cfg, "boards", ())}
+        if known_board_ids:
+            if payload_board_id not in known_board_ids:
+                return False, "other"
+        elif payload_board_id != cfg.board_id:
+            return False, "other"
+    if action_type(action) == "commentCard" and is_agent_authored_comment(action, cfg):
         return False, "other"
     kind = action_type(action)
     if kind == "addMemberToCard" and member_id_from_action(action) == cfg.agent_member_id:
@@ -278,7 +376,7 @@ class TrelloClient:
 
 
 class Bridge:
-    def __init__(self, cfg: Config, client: TrelloClient | None = None):
+    def __init__(self, cfg: Config, client: TrelloClient | None = None, board_config: BoardConfig | None = None):
         self.cfg = cfg
         self.client = client or TrelloClient(cfg)
         self.dedup = Deduplicator(cfg.dedup_window_seconds)
@@ -288,8 +386,20 @@ class Bridge:
         self._run_state_status: dict[str, str] = {}
         self._run_summaries: dict[str, dict[str, Any]] = {}
         self._log_handles: dict[str, Any] = {}
-        self._state_path = Path(self.cfg.project_dir or Path(__file__).parent) / "bridge_state.json"
-        self.logger = logging.getLogger("trello-bot")
+        if board_config is None:
+            board_config = BoardConfig(
+                board_id=cfg.board_id,
+                list_doing=cfg.list_doing,
+                list_stuck=cfg.list_stuck,
+                list_done=cfg.list_done,
+                list_dropped=cfg.list_dropped,
+            )
+        self.board_config = board_config
+        self.board_slug = board_config.board_id[:8]
+        project_dir = Path(self.cfg.project_dir or Path(__file__).parent)
+        self._state_path = project_dir / "states" / f"{self.board_slug}.json"
+        self._worker_log_dir = project_dir / "workers" / self.board_slug
+        self.logger = logging.getLogger(f"trello-bot.{self.board_slug}")
         self._load_state()
 
     def _cancel_keywords(self, action: dict[str, Any]) -> bool:
@@ -323,10 +433,10 @@ class Bridge:
         return False
 
     def _terminal_list_ids(self) -> set[str]:
-        return {self.cfg.list_done, self.cfg.list_dropped}
+        return {self.board_config.list_done, self.board_config.list_dropped}
 
     def _completed_list_ids(self) -> set[str]:
-        return {self.cfg.list_stuck, self.cfg.list_done, self.cfg.list_dropped}
+        return {self.board_config.list_stuck, self.board_config.list_done, self.board_config.list_dropped}
 
     def _is_terminal_state(self, card: dict[str, Any]) -> bool:
         return str(card.get("idList", "")) in self._terminal_list_ids()
@@ -399,7 +509,7 @@ class Bridge:
         self._save_state()
 
     def _prune_worker_logs(self) -> None:
-        log_dir = Path(self.cfg.project_dir or Path(__file__).parent) / "workers"
+        log_dir = self._worker_log_dir
         if not log_dir.exists():
             return
         try:
@@ -542,7 +652,7 @@ First, fetch the card details using the CLI:
 Required first actions (execute these after fetching card details):
 1. Post one concise pickup comment on the card based on the card name/context; do NOT use a fixed template sentence. A good pattern is: start with the card title or intent in your own words, then note the trigger and next step.
 2. Move the card to the configured Doing list:
-   python3 {command_hint} move {card_id_value} {self.cfg.list_doing}
+   python3 {command_hint} move {card_id_value} {self.board_config.list_doing}
 
 After completing the required first actions, continue with the actual work. Use the local Trello bridge CLI for all write-back; it reads credentials from local config.env and does not require secrets in this prompt:
   python3 {command_hint} comment CARD_ID TEXT
@@ -556,10 +666,10 @@ Progress reporting:
 - For very long tasks, you may post up to 5 progress comments in total; aim for 2 well-placed updates plus pickup and completion.
 
 Configured lifecycle list IDs:
-  Doing: {self.cfg.list_doing}
-  Stuck: {self.cfg.list_stuck}
-  Done: {self.cfg.list_done}
-  Dropped: {self.cfg.list_dropped}
+  Doing: {self.board_config.list_doing}
+  Stuck: {self.board_config.list_stuck}
+  Done: {self.board_config.list_done}
+  Dropped: {self.board_config.list_dropped}
 
 Configured member IDs:
   Manager: {self.cfg.manager_member_id} (@{self.cfg.manager_username})
@@ -568,12 +678,12 @@ Mandatory transition rules — these are hard constraints, not suggestions:
 - If the task is cancelled or out of scope, explain briefly and move it to Dropped.
 - If the task is blocked/stuck, you MUST perform ALL three steps in sequence:
   1. Post exactly one comment that clearly states what is blocking progress and what you need from @{self.cfg.manager_username}. Mention @{self.cfg.manager_username} inline so they are notified.
-  2. Move the card to Stuck ({self.cfg.list_stuck})
+  2. Move the card to Stuck ({self.board_config.list_stuck})
   3. Assign the card to @{self.cfg.manager_username} using: python3 {command_hint} assign CARD_ID {self.cfg.manager_member_id}
 |- After completing any work (success, blocker, or cancel), your FINAL action must be one of these terminal sequences. No text-only response is a valid end state.
-  Success: post one completion comment mentioning @{self.cfg.manager_username} summarizing what was done, then move card to Done ({self.cfg.list_done}), then unassign yourself from the card.
+  Success: post one completion comment mentioning @{self.cfg.manager_username} summarizing what was done, then move card to Done ({self.board_config.list_done}), then unassign yourself from the card.
   Blocker: execute the full Stuck sequence above.
-  Cancel/drop: move card to Dropped ({self.cfg.list_dropped}), explain briefly, mention @{self.cfg.manager_username}. Then unassign yourself from the card.
+  Cancel/drop: move card to Dropped ({self.board_config.list_dropped}), explain briefly, mention @{self.cfg.manager_username}. Then unassign yourself from the card.
 
 Do NOT leave the card in Doing after reporting a blocker. Execute all three Stuck actions in sequence.
 Keep comments concise and do not expose API keys, tokens, or internal IDs in manager-facing text.
@@ -686,78 +796,100 @@ def config_path() -> Path:
     return Path(os.environ.get("TRELLO_BOT_CONFIG", Path(__file__).with_name("config.env")))
 
 
-class WebhookHandler(http.server.BaseHTTPRequestHandler):
-    bridge: Bridge
+def run_server(cfg: Config) -> None:
 
-    def log_message(self, fmt: str, *args: Any) -> None:
-        logging.getLogger("trello-bot.http").info(fmt, *args)
+    board_configs = cfg.boards or (
+        BoardConfig(
+            board_id=cfg.board_id,
+            list_doing=cfg.list_doing,
+            list_stuck=cfg.list_stuck,
+            list_done=cfg.list_done,
+            list_dropped=cfg.list_dropped,
+        ),
+    )
+    bridges: dict[str, Bridge] = {}
+    clients: dict[str, TrelloClient] = {}
+    for board_config in board_configs:
+        client = TrelloClient(cfg)
+        bridges[board_config.board_id] = Bridge(cfg, board_config=board_config, client=client)
+        clients[board_config.board_id] = client
 
-    def do_HEAD(self) -> None:
-        self.send_response(200)
-        self.end_headers()
+    class ConfiguredWebhookHandler(http.server.BaseHTTPRequestHandler):
+        cfg_local = cfg
 
-    def do_GET(self) -> None:
-        if self.path in ("/", "/health", "/webhook"):
-            payload = b'{"status":"ok"}'
+        def log_message(self, fmt: str, *args: Any) -> None:
+            logging.getLogger("trello-bot.http").info(fmt, *args)
+
+        def do_HEAD(self) -> None:
+            self.send_response(200)
+            self.end_headers()
+
+        def do_GET(self) -> None:
+            if self.path in ("/", "/health", "/webhook"):
+                payload = b'{"status":"ok"}'
+                self.send_response(200)
+                self.send_header("Content-Type", "application/json")
+                self.send_header("Content-Length", str(len(payload)))
+                self.end_headers()
+                if self.command == "GET":
+                    self.wfile.write(payload)
+                return
+            self.send_error(404)
+
+        def do_POST(self) -> None:
+            if self.path != "/webhook":
+                self.send_error(404)
+                return
+            length = int(self.headers.get("Content-Length", "0"))
+            raw_body = self.rfile.read(length)
+            signature = self.headers.get("X-Trello-Webhook", "")
+            if not verify_webhook_signature(
+                raw_body, signature, self.cfg_local.webhook_secret, self.cfg_local.callback_url
+            ):
+                self.send_error(403, "invalid webhook signature")
+                return
+            try:
+                action = normalize_webhook_payload(json.loads(raw_body))
+            except (ValueError, json.JSONDecodeError):
+                self.send_error(400, "invalid JSON")
+                return
+
+            # Trello expects a fast successful callback. Do not hold its request open
+            # while we fetch the card, write the receipt, and launch Hermes.
+            def _process_async(action: dict[str, Any]) -> None:
+                try:
+                    board_id_value = board_id(action)
+                    bridge = bridges.get(board_id_value)
+                    if not bridge:
+                        logging.getLogger("trello-bot").info(
+                            "ignored webhook for unknown board=%s", board_id_value
+                        )
+                        return
+                    result = bridge.process(action)
+                    bridge.logger.info("webhook processed: %s", result)
+                except Exception:
+                    logging.getLogger("trello-bot").exception("webhook processing failed")
+
+            threading.Thread(
+                target=_process_async,
+                args=(action,),
+                name="trello-webhook-work",
+                daemon=True,
+            ).start()
+            payload = b'{"status":"accepted"}'
             self.send_response(200)
             self.send_header("Content-Type", "application/json")
             self.send_header("Content-Length", str(len(payload)))
             self.end_headers()
-            if self.command == "GET":
-                self.wfile.write(payload)
-            return
-        self.send_error(404)
+            self.wfile.write(payload)
 
-    def do_POST(self) -> None:
-        if self.path != "/webhook":
-            self.send_error(404)
-            return
-        length = int(self.headers.get("Content-Length", "0"))
-        raw_body = self.rfile.read(length)
-        signature = self.headers.get("X-Trello-Webhook", "")
-        if not verify_webhook_signature(
-            raw_body, signature, self.bridge.cfg.webhook_secret, self.bridge.cfg.callback_url
-        ):
-            self.send_error(403, "invalid webhook signature")
-            return
-        try:
-            action = normalize_webhook_payload(json.loads(raw_body))
-        except (ValueError, json.JSONDecodeError):
-            self.send_error(400, "invalid JSON")
-            return
-
-        # Trello expects a fast successful callback. Do not hold its request open
-        # while we fetch the card, write the receipt, and launch Hermes.
-        threading.Thread(
-            target=self._process_async,
-            args=(action,),
-            name="trello-webhook-work",
-            daemon=True,
-        ).start()
-        payload = b'{"status":"accepted"}'
-        self.send_response(200)
-        self.send_header("Content-Type", "application/json")
-        self.send_header("Content-Length", str(len(payload)))
-        self.end_headers()
-        self.wfile.write(payload)
-
-    def _process_async(self, action: dict[str, Any]) -> None:
-        try:
-            result = self.bridge.process(action)
-            self.bridge.logger.info("webhook processed: %s", result)
-        except Exception:
-            self.bridge.logger.exception("webhook processing failed")
-
-
-def run_server(cfg: Config) -> None:
-    bridge = Bridge(cfg)
-    handler_type = type("ConfiguredWebhookHandler", (WebhookHandler,), {"bridge": bridge})
-    server = http.server.ThreadingHTTPServer((cfg.bind_host, cfg.bind_port), handler_type)
+    server = http.server.ThreadingHTTPServer((cfg.bind_host, cfg.bind_port), ConfiguredWebhookHandler)
     logging.info("listening on %s:%s", cfg.bind_host, cfg.bind_port)
 
     def graceful_shutdown(signum, frame):
         logging.info("received signal %s, shutting down gracefully", signum)
-        bridge._save_state()
+        for bridge in bridges.values():
+            bridge._save_state()
         server.shutdown()
 
     signal.signal(signal.SIGINT, graceful_shutdown)
@@ -805,6 +937,7 @@ def main() -> int:
         print(json.dumps(card, indent=2))
     else:
         parser.error(f"unknown command: {args.command}")
+    return 0
 
 
 if __name__ == "__main__":
