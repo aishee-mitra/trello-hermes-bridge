@@ -141,12 +141,10 @@ class Config:
                     list_dropped=required("LIST_ID_DROPPED"),
                 )
             )
-        prefix = "BOARD1_"
-        index = 1
-        while f"{prefix}BOARD_ID" in values:
+        board_indexes = sorted({int(m.group(1)) for key in values for m in [re.search(r"^BOARD(\d+)_", key)] if m})
+        for index in board_indexes:
+            prefix = f"BOARD{index}"
             boards.append(BoardConfig.from_env_values(prefix, values))
-            index += 1
-            prefix = f"BOARD{index}_"
 
         if not boards:
             raise ValueError("missing board configuration: define TRELLO_BOARD_ID or BOARD<n>_BOARD_ID")
