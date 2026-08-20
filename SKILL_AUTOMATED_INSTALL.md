@@ -11,8 +11,9 @@ This guide walks you through a complete, automated installation with validation 
 The Trello-Hermes bridge is a local HTTP service that:
 1. Listens for Trello board webhooks
 2. Filters for explicit triggers (card assignment or @mention)
-3. Spawns a detached Hermes worker to complete the task
-4. Updates the card automatically with results
+3. Routes events to the matching board configuration
+4. Spawns a detached Hermes worker to complete the task
+5. Updates the card automatically with results
 
 **Requirements:**
 - **Hermes Agent** (installed and configured — checked FIRST)
@@ -179,7 +180,11 @@ Copy the ID for each list. Note them as:
 - `LIST_ID_DONE=<id>`
 - `LIST_ID_DROPPED=<id>`
 
-### 2.8 Public Callback URL (for Webhooks)
+### 2.8 Optional Additional Boards
+
+If you want one bridge instance to serve multiple Trello boards, repeat 2.4-2.7 for each extra board and store them as `BOARD2_*`, `BOARD3_*`, etc. Numbering does not need to be sequential.
+
+### 2.9 Public Callback URL (for Webhooks)
 
 This is the public HTTPS URL where Trello will POST webhook events.
 
@@ -246,7 +251,7 @@ BIND_PORT=8787
 
 # Hermes integration
 HERMES_BIN=$(which hermes)  # Auto-detect, or set manually to /path/to/hermes
-HERMES_MODEL=openrouter:tencent/hy3:free  # or your preferred model
+HERMES_MODEL=openrouter:default-model  # or your preferred model/provider
 ```
 
 **Optional multi-board config:**
@@ -484,7 +489,7 @@ curl -X GET https://your-callback-url-without-webhook/health
 
 ---
 
-## Phase 6: Register Trello Webhook
+## Phase 6: Register Trello Webhook(s)
 
 ### 6.1 Create the Webhook
 
@@ -496,16 +501,28 @@ source config.env
 set +a
 ```
 
-Then create the webhook:
+Then create the webhook for the primary board:
 
 ```bash
 curl -X POST "https://api.trello.com/1/tokens/$TRELLO_TOKEN/webhooks?key=$TRELLO_API_KEY" \
   -H "Content-Type: application/json" \
-  -d "{
-    \"callbackURL\": \"$TRELLO_CALLBACK_URL\",
-    \"idModel\": \"$TRELLO_BOARD_ID\",
-    \"description\": \"Hermes Bridge Webhook\"
-  }"
+  -d '{
+    "callbackURL": "'"$TRELLO_CALLBACK_URL"'",
+    "idModel": "'"$TRELLO_BOARD_ID"'",
+    "description": "Hermes Bridge Webhook"
+  }'
+```
+
+If you configured additional boards with `BOARD2_*`, `BOARD3_*`, etc., register one webhook per board using the same callback URL.
+
+```bash
+curl -X POST "https://api.trello.com/1/tokens/$TRELLO_TOKEN/webhooks?key=$TRELLO_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "callbackURL": "'"$TRELLO_CALLBACK_URL"'",
+    "idModel": "<BOARD2_BOARD_ID>",
+    "description": "Hermes Bridge Webhook"
+  }'
 ```
 
 ✅ Expected response:
@@ -524,7 +541,7 @@ curl -X POST "https://api.trello.com/1/tokens/$TRELLO_TOKEN/webhooks?key=$TRELLO
 curl -s -X GET "https://api.trello.com/1/tokens/$TRELLO_TOKEN/webhooks?key=$TRELLO_API_KEY" | jq '.[] | {id, callbackURL, active}'
 ```
 
-✅ Should list your webhook with `"active": true`.
+✅ Should list your webhook(s) with `"active": true`.
 
 ---
 
