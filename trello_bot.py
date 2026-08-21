@@ -642,52 +642,34 @@ class Bridge:
                 break
         
         command_hint = str(Path(__file__).resolve())
-        prompt = f"""Work the Trello card below (card id: {card_id_value}). This run was triggered by {signal}.
+        prompt = f"""Work the Trello card below (id: {card_id_value}). Trigger: {signal}
 
-Card description: {card.get('desc', '')}
-Origin list id: {origin_list}
+Card: {card.get('name', '')}
+Description: {card.get('desc', '')}
+Origin list: {origin_list}
 
-First, fetch the card details using the CLI:
-  python3 {command_hint} get-card {card_id_value}
-
-Required first actions (execute these after fetching card details):
-1. Post one concise pickup comment on the card based on the card name/context; do NOT use a fixed template sentence. A good pattern is: start with the card title or intent in your own words, then note the trigger and next step.
-2. Move the card to the configured Doing list:
+Required first actions:
+1. Fetch card details: python3 {command_hint} get-card {card_id_value}
+2. Post ONE concise pickup comment, then move card to Doing:
    python3 {command_hint} move {card_id_value} {self.board_config.list_doing}
 
-After completing the required first actions, continue with the actual work. Use the local Trello bridge CLI for all write-back; it reads credentials from local config.env and does not require secrets in this prompt:
+Bridge CLI:
   python3 {command_hint} comment CARD_ID TEXT
   python3 {command_hint} move CARD_ID LIST_ID
   python3 {command_hint} assign CARD_ID MEMBER_ID
 
-Progress reporting:
-- After completing meaningful chunks, post ONE concise progress comment:
-  what changed, what’s blocked, and what’s next.
-- Do not comment after every tiny step or flood the card.
-- For very long tasks, you may post up to 5 progress comments in total; aim for 2 well-placed updates plus pickup and completion.
+Rules:
+- Keep comments concise; never expose secrets or internal IDs.
+- Progress updates: at most 2 progress comments plus pickup and completion.
+- Terminal states only:
+  Success: completion comment -> move to Done ({self.board_config.list_done}) -> unassign
+  Blocked: blocker comment mentioning @{self.cfg.manager_username} -> move to Stuck ({self.board_config.list_stuck}) -> assign to @{self.cfg.manager_username}
+  Cancel: brief comment -> move to Dropped ({self.board_config.list_dropped}) -> unassign
+- If blocked, do NOT leave the card in Doing.
 
-Configured lifecycle list IDs:
-  Doing: {self.board_config.list_doing}
-  Stuck: {self.board_config.list_stuck}
-  Done: {self.board_config.list_done}
-  Dropped: {self.board_config.list_dropped}
-
-Configured member IDs:
-  Manager: {self.cfg.manager_member_id} (@{self.cfg.manager_username})
-
-Mandatory transition rules — these are hard constraints, not suggestions:
-- If the task is cancelled or out of scope, explain briefly and move it to Dropped.
-- If the task is blocked/stuck, you MUST perform ALL three steps in sequence:
-  1. Post exactly one comment that clearly states what is blocking progress and what you need from @{self.cfg.manager_username}. Mention @{self.cfg.manager_username} inline so they are notified.
-  2. Move the card to Stuck ({self.board_config.list_stuck})
-  3. Assign the card to @{self.cfg.manager_username} using: python3 {command_hint} assign CARD_ID {self.cfg.manager_member_id}
-|- After completing any work (success, blocker, or cancel), your FINAL action must be one of these terminal sequences. No text-only response is a valid end state.
-  Success: post one completion comment mentioning @{self.cfg.manager_username} summarizing what was done, then move card to Done ({self.board_config.list_done}), then unassign yourself from the card.
-  Blocker: execute the full Stuck sequence above.
-  Cancel/drop: move card to Dropped ({self.board_config.list_dropped}), explain briefly, mention @{self.cfg.manager_username}. Then unassign yourself from the card.
-
-Do NOT leave the card in Doing after reporting a blocker. Execute all three Stuck actions in sequence.
-Keep comments concise and do not expose API keys, tokens, or internal IDs in manager-facing text.
+Board: {self.board_config.board_id}
+Manager: @{self.cfg.manager_username} ({self.cfg.manager_member_id})
+Agent: @{self.cfg.agent_username} ({self.cfg.agent_member_id})
 """
         cmd = [self.cfg.hermes_bin, "chat", "-q", prompt, "--cli", "-Q", "--accept-hooks", "--yolo"]
         if provider_override:
