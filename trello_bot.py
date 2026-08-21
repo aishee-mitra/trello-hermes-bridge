@@ -84,6 +84,7 @@ class Config:
     worker_log_retention_days: int = 14
     worker_log_max_files: int = 50
     worker_log_max_size_bytes: int = 10 * 1024 * 1024
+    worker_max_turns: int = 0
     bridge_state_max_bytes: int = 64 * 1024
     bridge_state_ttl_seconds: int = 7 * 24 * 60 * 60
     stale_run_timeout_seconds: int = 60 * 60
@@ -174,6 +175,7 @@ class Config:
                 worker_log_retention_days=int(optional("WORKER_LOG_RETENTION_DAYS", "14")),
                 worker_log_max_files=int(optional("WORKER_LOG_MAX_FILES", "50")),
                 worker_log_max_size_bytes=int(optional("WORKER_LOG_MAX_SIZE_BYTES", str(10 * 1024 * 1024))),
+                worker_max_turns=int(optional("WORKER_MAX_TURNS", "0")),
                 bridge_state_max_bytes=int(optional("BRIDGE_STATE_MAX_BYTES", "65536")),
                 bridge_state_ttl_seconds=int(optional("BRIDGE_STATE_TTL_SECONDS", "604800")),
                 stale_run_timeout_seconds=int(optional("STALE_RUN_TIMEOUT_SECONDS", "3600")),
@@ -200,6 +202,7 @@ class Config:
             worker_log_retention_days=int(optional("WORKER_LOG_RETENTION_DAYS", "14")),
             worker_log_max_files=int(optional("WORKER_LOG_MAX_FILES", "50")),
             worker_log_max_size_bytes=int(optional("WORKER_LOG_MAX_SIZE_BYTES", str(10 * 1024 * 1024))),
+            worker_max_turns=int(optional("WORKER_MAX_TURNS", "0")),
             bridge_state_max_bytes=int(optional("BRIDGE_STATE_MAX_BYTES", "65536")),
             bridge_state_ttl_seconds=int(optional("BRIDGE_STATE_TTL_SECONDS", "604800")),
             stale_run_timeout_seconds=int(optional("STALE_RUN_TIMEOUT_SECONDS", "3600")),
@@ -692,6 +695,8 @@ Keep comments concise and do not expose API keys, tokens, or internal IDs in man
         if model_override:
             cmd.extend(["--model", model_override])
             self.logger.info("spawning worker with provider=%s model=%s", provider_override, model_override)
+        if self.cfg.worker_max_turns:
+            cmd.extend(["--max-turns", str(self.cfg.worker_max_turns)])
         self.logger.info("spawning Hermes worker for card %s", card_id_value[:8])
         worker_log = Path(self.cfg.project_dir or Path(__file__).parent) / "workers" / f"{card_id_value[:8]}.log"
         worker_log.parent.mkdir(parents=True, exist_ok=True)
