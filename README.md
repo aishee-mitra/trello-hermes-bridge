@@ -184,9 +184,9 @@ If no model label is present, the worker uses the default model from `HERMES_MOD
 || State | Action |
 ||-------|--------|
 || `Todo` → pickup | Bridge moves card to **Doing** |
-|| Completed | Worker moves card to **Done** |
-|| Blocked | Worker comments + mentions manager + moves to **Stuck** |
-|| Cancelled | Worker comments briefly + moves to **Dropped** |
+|| Completed | Worker posts completion comment → moves card to **Done** → unassigns itself |
+|| Blocked | Worker posts comment stating what is blocked and what is needed from @manager → moves card to **Stuck** → assigns to manager |
+|| Cancelled | Manager explicitly cancels or task is clearly out of scope → worker posts brief comment → moves card to **Dropped** → unassigns itself |
 
 ### Comment Tags
 

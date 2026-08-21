@@ -11,7 +11,7 @@ This guide walks you through a complete, automated installation with validation 
 The Trello-Hermes bridge is a local HTTP service that:
 1. Listens for Trello board webhooks
 2. Filters for explicit triggers (card assignment or @mention)
-3. Routes events to the matching board configuration
+3. Routes events to the matching board config
 4. Spawns a detached Hermes worker to complete the task
 5. Updates the card automatically with results
 
@@ -559,7 +559,8 @@ The bridge should:
 2. Pick up the card
 3. Move it to Doing
 4. Spawn a Hermes worker
-5. Complete and move to Done
+5. Post a completion comment and move the card to Done
+6. Unassign itself from the card
 
 ### 7.2 Monitor Bridge Logs in Real-Time
 
