@@ -661,10 +661,11 @@ Bridge CLI:
 Rules:
 - Keep comments concise; never expose secrets or internal IDs.
 - Progress updates: at most 2 progress comments plus pickup and completion.
+- You were triggered by assignment or @mention. Do not retrigger yourself while already working this card, but explicit reassignment or manager mention is allowed.
+- Cancel/drop only if the manager explicitly says to cancel or the task is clearly out of scope. In that case: brief comment explaining why -> move to Dropped ({self.board_config.list_dropped}) -> unassign yourself.
 - Terminal states only:
-  Success: completion comment -> move to Done ({self.board_config.list_done}) -> unassign
-  Blocked: blocker comment mentioning @{self.cfg.manager_username} -> move to Stuck ({self.board_config.list_stuck}) -> assign to @{self.cfg.manager_username}
-  Cancel: brief comment -> move to Dropped ({self.board_config.list_dropped}) -> unassign
+  Success: completion comment -> move to Done ({self.board_config.list_done}) -> unassign yourself
+  Blocked: comment that explicitly states what is blocking progress and what you need from @{self.cfg.manager_username} -> move to Stuck ({self.board_config.list_stuck}) -> assign to @{self.cfg.manager_username}
 - If blocked, do NOT leave the card in Doing.
 
 Board: {self.board_config.board_id}
